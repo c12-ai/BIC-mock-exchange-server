@@ -9,17 +9,18 @@ Handles two task types:
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from loguru import logger
 
 from src.generators.entity_updates import (
     create_cc_system_update,
+    create_ccs_ext_module_update,
     create_robot_update,
     create_sample_cartridge_update,
     create_silica_cartridge_update,
     create_tube_rack_update,
+    generate_robot_timestamp,
 )
 from src.generators.images import generate_captured_images
 from src.generators.timing import calculate_cc_duration, calculate_intermediate_interval
@@ -62,14 +63,18 @@ class CCSimulator(BaseSimulator):
 
         # 1. Short initial delay — robot moving to work station
         # Log: robot moving to CC station
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot moving to CC station")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot moving to CC station",
+        )
 
         await self._apply_delay(3.0, 5.0)
 
         # 2. Publish initial intermediate updates
-        start_timestamp = datetime.now(tz=UTC).isoformat()
+        start_timestamp = generate_robot_timestamp()
         experiment_params_dict = params.experiment_params.model_dump()
 
         initial_updates = [
@@ -80,9 +85,9 @@ class CCSimulator(BaseSimulator):
                 experiment_params=experiment_params_dict,
                 start_timestamp=start_timestamp,
             ),
-            create_silica_cartridge_update(f"sc-{params.work_station_id}", params.work_station_id, EntityState.USING),
-            create_sample_cartridge_update(f"sac-{params.work_station_id}", params.work_station_id, EntityState.USING),
-            create_tube_rack_update(f"tr-{params.work_station_id}", params.work_station_id, EntityState.USING),
+            create_silica_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USING),
+            create_sample_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USING),
+            create_tube_rack_update(params.work_station_id, params.work_station_id, EntityState.USING),
         ]
         await self._producer.publish_intermediate_update(task_id, initial_updates)
 
@@ -125,26 +130,52 @@ class CCSimulator(BaseSimulator):
 
         Flow:
         1. Short delay (robot pressing stop, capturing screen).
-        2. Build entity updates — CC terminated, materials marked used.
-        3. Generate mock screen capture images.
-        4. Return final result.
+        2. Retrieve experiment context from world_state (if available).
+        3. Build entity updates — CC terminated, materials marked used, ext_module marked used.
+        4. Generate mock screen capture images.
+        5. Return final result.
         """
         logger.info("Simulating terminate_cc for task {}", task_id)
 
         # Log: robot terminating CC
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "terminating_cc"),
-            create_cc_system_update(params.device_id, EntityState.RUNNING),
-        ], "robot terminating CC")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "terminating_cc"),
+                create_cc_system_update(params.device_id, EntityState.RUNNING),
+            ],
+            "robot terminating CC",
+        )
 
         await self._apply_delay(5.0, 10.0)
 
+        # Retrieve experiment context from world_state if available
+        experiment_params = None
+        start_timestamp = None
+        if self._world_state is not None:
+            device_entity = self._world_state.get_entity("column_chromatography_system", params.device_id)
+            if device_entity is not None:
+                experiment_params = device_entity.get("experiment_params")
+                start_timestamp = device_entity.get("start_timestamp")
+                logger.debug(
+                    "Retrieved experiment context for device {}: experiment_params={}, start_timestamp={}",
+                    params.device_id,
+                    experiment_params is not None,
+                    start_timestamp,
+                )
+
         updates = [
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
-            create_cc_system_update(params.device_id, EntityState.TERMINATED),
-            create_silica_cartridge_update(f"sc-{params.work_station_id}", params.work_station_id, EntityState.USED),
-            create_sample_cartridge_update(f"sac-{params.work_station_id}", params.work_station_id, EntityState.USED),
-            create_tube_rack_update(f"tr-{params.work_station_id}", params.work_station_id, EntityState.USED),
+            create_cc_system_update(
+                params.device_id,
+                EntityState.TERMINATED,
+                experiment_params=experiment_params,
+                start_timestamp=start_timestamp,
+            ),
+            create_silica_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USED),
+            create_sample_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USED),
+            create_tube_rack_update(params.work_station_id, params.work_station_id, EntityState.USED),
+            create_ccs_ext_module_update(params.work_station_id, EntityState.USED),
         ]
 
         # Log: CC terminated, materials used

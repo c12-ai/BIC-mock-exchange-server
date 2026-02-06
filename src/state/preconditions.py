@@ -85,21 +85,20 @@ class PreconditionChecker:
         if work_station_id is None:
             return PreconditionResult(ok=True)  # No work station to check
 
-        ext_module_id = f"ext-{work_station_id}"
-        ext_module = self._world_state.get_entity("ccs_ext_module", ext_module_id)
+        ext_module = self._world_state.get_entity("ccs_ext_module", work_station_id)
 
         if ext_module is not None:
             state = ext_module.get("state", "")
             if state in ("using", "mounted"):
                 logger.warning(
                     "Precondition failed for setup_cartridges: ext_module {} already in state '{}'",
-                    ext_module_id,
+                    work_station_id,
                     state,
                 )
                 return PreconditionResult(
                     ok=False,
                     error_code=2001,
-                    error_msg=f"External module {ext_module_id} already has cartridges (state: {state})",
+                    error_msg=f"External module {work_station_id} already has cartridges (state: {state})",
                 )
 
         return PreconditionResult(ok=True)
@@ -215,15 +214,14 @@ class PreconditionChecker:
         if work_station_id is None:
             return PreconditionResult(ok=True)
 
-        tube_rack_id = f"tr-{work_station_id}"
-        tube_rack = self._world_state.get_entity("tube_rack", tube_rack_id)
+        tube_rack = self._world_state.get_entity("tube_rack", work_station_id)
 
         if tube_rack is None:
-            logger.warning("Precondition failed for fraction_consolidation: tube_rack {} not found", tube_rack_id)
+            logger.warning("Precondition failed for fraction_consolidation: tube_rack {} not found", work_station_id)
             return PreconditionResult(
                 ok=False,
                 error_code=2040,
-                error_msg=f"Tube rack {tube_rack_id} not found in world state",
+                error_msg=f"Tube rack {work_station_id} not found in world state",
             )
 
         state = tube_rack.get("state", "")
@@ -231,13 +229,13 @@ class PreconditionChecker:
         if "used" not in state and "using" not in state:
             logger.warning(
                 "Precondition failed for fraction_consolidation: tube_rack {} in state '{}', expected to contain 'used' or 'using'",
-                tube_rack_id,
+                work_station_id,
                 state,
             )
             return PreconditionResult(
                 ok=False,
                 error_code=2041,
-                error_msg=f"Tube rack {tube_rack_id} must be in 'used' or 'using' state (current: {state})",
+                error_msg=f"Tube rack {work_station_id} must be in 'used' or 'using' state (current: {state})",
             )
 
         return PreconditionResult(ok=True)
@@ -293,11 +291,8 @@ class PreconditionChecker:
         if work_station_id is None:
             return PreconditionResult(ok=True)
 
-        left_chute_id = f"pcc-left-{work_station_id}"
-        right_chute_id = f"pcc-right-{work_station_id}"
-
-        left_chute = self._world_state.get_entity("pcc_left_chute", left_chute_id)
-        right_chute = self._world_state.get_entity("pcc_right_chute", right_chute_id)
+        left_chute = self._world_state.get_entity("pcc_left_chute", work_station_id)
+        right_chute = self._world_state.get_entity("pcc_right_chute", work_station_id)
 
         # At least one chute must have bins
         has_bins = False
@@ -309,7 +304,9 @@ class PreconditionChecker:
                 has_bins = True
 
         if not has_bins:
-            logger.warning("Precondition failed for return_ccs_bins: no bins found in chutes for work_station {}", work_station_id)
+            logger.warning(
+                "Precondition failed for return_ccs_bins: no bins found in chutes for work_station {}", work_station_id
+            )
             return PreconditionResult(
                 ok=False,
                 error_code=2070,

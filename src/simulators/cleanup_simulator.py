@@ -57,9 +57,13 @@ class CleanupSimulator(BaseSimulator):
         logger.info("Simulating stop_evaporation for task {}", task_id)
 
         # Log: robot moving to evaporation station
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot moving to evaporation station")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot moving to evaporation station",
+        )
 
         await self._apply_delay(15.0, 30.0)
 
@@ -77,7 +81,7 @@ class CleanupSimulator(BaseSimulator):
                 current_pressure=1013.0,
             ),
             create_round_bottom_flask_update(
-                f"rbf-{params.work_station_id}", params.work_station_id, "used,evaporation_complete"
+                params.work_station_id, params.work_station_id, "used,evaporation_complete"
             ),
         ]
         await self._publish_log(task_id, updates, "evaporation stopped")
@@ -89,9 +93,13 @@ class CleanupSimulator(BaseSimulator):
         logger.info("Simulating setup_ccs_bins for task {}", task_id)
 
         # Log: robot moving to bin storage
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot moving to bin storage")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot moving to bin storage",
+        )
 
         await self._apply_delay(10.0, 20.0)
 
@@ -99,12 +107,12 @@ class CleanupSimulator(BaseSimulator):
         updates = [
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
             create_pcc_left_chute_update(
-                f"pcc-left-{params.work_station_id}",
+                params.work_station_id,
                 front_waste_bin="open",
                 back_waste_bin=None,
             ),
             create_pcc_right_chute_update(
-                f"pcc-right-{params.work_station_id}",
+                params.work_station_id,
                 front_waste_bin=None,
                 back_waste_bin="open",
             ),
@@ -118,9 +126,13 @@ class CleanupSimulator(BaseSimulator):
         logger.info("Simulating return_ccs_bins for task {}", task_id)
 
         # Log: robot removing bins from chutes
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot removing bins from chutes")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot removing bins from chutes",
+        )
 
         await self._apply_delay(10.0, 20.0)
 
@@ -128,7 +140,7 @@ class CleanupSimulator(BaseSimulator):
         updates = [
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
             create_pcc_left_chute_update(
-                f"pcc-left-{params.work_station_id}",
+                params.work_station_id,
                 pulled_out_mm=0.0,
                 pulled_out_rate=0.0,
                 closed=True,
@@ -136,7 +148,7 @@ class CleanupSimulator(BaseSimulator):
                 back_waste_bin=None,
             ),
             create_pcc_right_chute_update(
-                f"pcc-right-{params.work_station_id}",
+                params.work_station_id,
                 pulled_out_mm=0.0,
                 pulled_out_rate=0.0,
                 closed=True,
@@ -153,9 +165,13 @@ class CleanupSimulator(BaseSimulator):
         logger.info("Simulating return_cartridges for task {}", task_id)
 
         # Log: robot removing cartridges
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot removing cartridges from mount")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot removing cartridges from mount",
+        )
 
         await self._apply_delay(10.0, 20.0)
 
@@ -164,7 +180,7 @@ class CleanupSimulator(BaseSimulator):
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
             create_silica_cartridge_update(params.silica_cartridge_id, params.waste_area_id, "returned"),
             create_sample_cartridge_update(params.sample_cartridge_id, params.waste_area_id, "returned"),
-            create_ccs_ext_module_update(f"ext-{params.work_station_id}", EntityState.AVAILABLE),
+            create_ccs_ext_module_update(params.work_station_id, EntityState.AVAILABLE),
         ]
         await self._publish_log(task_id, updates, "cartridges returned to waste area")
 
@@ -175,9 +191,13 @@ class CleanupSimulator(BaseSimulator):
         logger.info("Simulating return_tube_rack for task {}", task_id)
 
         # Log: robot picking up tube rack
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot picking up tube rack")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot picking up tube rack",
+        )
 
         await self._apply_delay(10.0, 20.0)
 

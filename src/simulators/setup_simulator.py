@@ -43,9 +43,13 @@ class SetupSimulator(BaseSimulator):
         logger.info("Simulating setup_cartridges for task {}", task_id)
 
         # Log: robot moving to work station
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot moving to work station")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot moving to work station",
+        )
 
         await self._apply_delay(15.0, 30.0)
 
@@ -53,7 +57,7 @@ class SetupSimulator(BaseSimulator):
         cartridge_updates = [
             create_silica_cartridge_update(params.silica_cartridge_id, params.work_station_id, EntityState.MOUNTED),
             create_sample_cartridge_update(params.sample_cartridge_id, params.work_station_id, EntityState.MOUNTED),
-            create_ccs_ext_module_update(f"ext-{params.work_station_id}", EntityState.USING),
+            create_ccs_ext_module_update(params.work_station_id, EntityState.USING),
         ]
         await self._publish_log(task_id, cartridge_updates, "cartridges mounted")
 
@@ -65,7 +69,7 @@ class SetupSimulator(BaseSimulator):
             create_robot_update(self.robot_id, params.work_station_id, RobotState.IDLE),
             create_silica_cartridge_update(params.silica_cartridge_id, params.work_station_id, EntityState.MOUNTED),
             create_sample_cartridge_update(params.sample_cartridge_id, params.work_station_id, EntityState.MOUNTED),
-            create_ccs_ext_module_update(f"ext-{params.work_station_id}", EntityState.USING),
+            create_ccs_ext_module_update(params.work_station_id, EntityState.USING),
         ]
         return RobotResult(code=0, msg="setup_cartridges completed", task_id=task_id, updates=updates)
 
@@ -74,16 +78,24 @@ class SetupSimulator(BaseSimulator):
         logger.info("Simulating setup_tube_rack for task {}", task_id)
 
         # Log: robot moving to work station
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot moving to work station")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot moving to work station",
+        )
 
         await self._apply_delay(10.0, 20.0)
 
         # Log: tube rack mounted
-        await self._publish_log(task_id, [
-            create_tube_rack_update(params.tube_rack_location_id, params.work_station_id, EntityState.MOUNTED),
-        ], "tube_rack mounted")
+        await self._publish_log(
+            task_id,
+            [
+                create_tube_rack_update(params.tube_rack_location_id, params.work_station_id, EntityState.MOUNTED),
+            ],
+            "tube_rack mounted",
+        )
 
         updates = [
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
@@ -100,6 +112,6 @@ class SetupSimulator(BaseSimulator):
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
             create_silica_cartridge_update(params.silica_cartridge_id, params.work_station_id, EntityState.USED),
             create_sample_cartridge_update(params.sample_cartridge_id, params.work_station_id, EntityState.USED),
-            create_ccs_ext_module_update(f"ext-{params.work_station_id}", EntityState.USED),
+            create_ccs_ext_module_update(params.work_station_id, EntityState.USED),
         ]
         return RobotResult(code=0, msg="collapse_cartridges completed", task_id=task_id, updates=updates)

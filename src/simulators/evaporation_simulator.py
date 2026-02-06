@@ -47,9 +47,13 @@ class EvaporationSimulator(BaseSimulator):
         )
 
         # Log: robot moving to evaporation station
-        await self._publish_log(task_id, [
-            create_robot_update(self.robot_id, params.work_station_id, "moving"),
-        ], "robot moving to evaporation station")
+        await self._publish_log(
+            task_id,
+            [
+                create_robot_update(self.robot_id, params.work_station_id, "moving"),
+            ],
+            "robot moving to evaporation station",
+        )
 
         # 1. Short initial delay
         await self._apply_delay(3.0, 5.0)
@@ -69,9 +73,7 @@ class EvaporationSimulator(BaseSimulator):
                 target_pressure=target_pressure,
                 current_pressure=initial_pressure,
             ),
-            create_round_bottom_flask_update(
-                f"rbf-{params.work_station_id}", params.work_station_id, "used,evaporating"
-            ),
+            create_round_bottom_flask_update(params.work_station_id, params.work_station_id, "used,evaporating"),
         ]
         await self._producer.publish_intermediate_update(task_id, initial_updates)
 
