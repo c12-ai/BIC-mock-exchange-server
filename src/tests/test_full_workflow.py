@@ -386,26 +386,25 @@ class TestFullBICWorkflow:
         assert cc is not None
         assert cc["state"] == "terminated"
 
-        # terminate_cc sets {ws_id} silica/sample to "used"
-        silica_cc = world_state.get_entity("silica_cartridge", ws_id)
+        # terminate_cc sets silica/sample to "used"
+        silica_cc = world_state.get_entity("silica_cartridge", "sc-001")
         assert silica_cc is not None
         assert silica_cc["state"] == "used"
 
-        sample_cc = world_state.get_entity("sample_cartridge", ws_id)
+        sample_cc = world_state.get_entity("sample_cartridge", "samp-001")
         assert sample_cc is not None
         assert sample_cc["state"] == "used"
 
         # -- 6. collapse_cartridges ---------------------------------------------
         # Precondition: silica + sample cartridges must be "used".
-        # Use the IDs that terminate_cc produced: {ws_id}.
         producer.reset_mock()
         msg = make_mock_message(
             "task-006",
             "collapse_cartridges",
             {
                 "work_station_id": ws_id,
-                "silica_cartridge_id": ws_id,
-                "sample_cartridge_id": ws_id,
+                "silica_cartridge_id": "sc-001",
+                "sample_cartridge_id": "samp-001",
                 "end_state": "idle",
             },
         )
@@ -474,16 +473,15 @@ class TestFullBICWorkflow:
         assert result.code == 0, f"return_ccs_bins failed: {result.msg}"
 
         # -- 9. return_cartridges -----------------------------------------------
-        # Precondition: cartridges must exist. We used {ws_id} as entity ID.
-        # collapse_cartridges updated them to "used" state; they still exist.
+        # Precondition: cartridges must exist with "used" state after collapse.
         producer.reset_mock()
         msg = make_mock_message(
             "task-009",
             "return_cartridges",
             {
                 "work_station_id": ws_id,
-                "silica_cartridge_id": ws_id,
-                "sample_cartridge_id": ws_id,
+                "silica_cartridge_id": "sc-001",
+                "sample_cartridge_id": "samp-001",
                 "waste_area_id": "waste-01",
                 "end_state": "idle",
             },
@@ -493,19 +491,19 @@ class TestFullBICWorkflow:
         assert result.code == 0, f"return_cartridges failed: {result.msg}"
 
         # Verify cartridges are now returned
-        silica_final = world_state.get_entity("silica_cartridge", ws_id)
+        silica_final = world_state.get_entity("silica_cartridge", "sc-001")
         assert silica_final is not None
         assert silica_final["state"] == "returned"
 
         # -- 10. return_tube_rack -----------------------------------------------
-        # Precondition: tube_rack must exist. {ws_id} was updated by consolidation.
+        # Precondition: tube_rack must exist.
         producer.reset_mock()
         msg = make_mock_message(
             "task-010",
             "return_tube_rack",
             {
                 "work_station_id": ws_id,
-                "tube_rack_id": ws_id,
+                "tube_rack_id": "rack-loc-1",
                 "waste_area_id": "waste-01",
                 "end_state": "idle",
             },
@@ -515,7 +513,7 @@ class TestFullBICWorkflow:
         assert result.code == 0, f"return_tube_rack failed: {result.msg}"
 
         # Verify tube rack returned
-        rack_final = world_state.get_entity("tube_rack", ws_id)
+        rack_final = world_state.get_entity("tube_rack", "rack-loc-1")
         assert rack_final is not None
         assert rack_final["state"] == "returned"
 

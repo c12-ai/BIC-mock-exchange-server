@@ -73,3 +73,34 @@ class BaseSimulator(ABC):
         delay = calculate_delay(base_min, base_max, self.multiplier, self.min_delay)
         logger.debug("Applying delay: {:.2f}s (base {}-{}, multiplier {})", delay, base_min, base_max, self.multiplier)
         await asyncio.sleep(delay)
+
+    def _find_entity_at_location(self, entity_type: str, location: str) -> str | None:
+        """Look up an entity ID by type and location from WorldState.
+
+        Useful when a command doesn't include a material's UUID but the mock server
+        previously tracked it via setup updates. Falls back to the location string
+        if WorldState is unavailable or the entity is not found.
+        """
+        if self._world_state is None:
+            return None
+        entities = self._world_state.get_entities_by_type(entity_type)
+        for entity_id, props in entities.items():
+            if props.get("location") == location:
+                return entity_id
+        return None
+
+    def _resolve_entity_id(self, entity_type: str, location: str) -> str:
+        """Resolve an entity ID from WorldState, falling back to the location string.
+
+        This allows simulators to produce correct entity IDs in result messages
+        even when the command params don't include the material UUID.
+        """
+        found = self._find_entity_at_location(entity_type, location)
+        if found is not None:
+            return found
+        logger.debug(
+            "Cannot resolve {} at location {} from WorldState, using location as fallback",
+            entity_type,
+            location,
+        )
+        return location

@@ -99,7 +99,10 @@ class PhotoSimulator(BaseSimulator):
         entity_type_map = {
             "combiflash": "column_chromatography_system",
             "column_chromatography": "column_chromatography_system",
+            "column_chromatography_system": "column_chromatography_system",
+            "isco_combiflash_nextgen_300": "column_chromatography_system",
             "evaporator": "evaporator",
+            "rotary_evaporator": "evaporator",
         }
 
         entity_type = entity_type_map.get(device_type)

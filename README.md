@@ -5,16 +5,24 @@ A standalone microservice that simulates the Robot Exchange MQ Server for local 
 ## Architecture
 
 ```
-┌──────────────────┐         RabbitMQ          ┌──────────────────────┐
-│  BIC Lab Service │                           │  Mock Robot Server   │
-│                  │   robot.commands exchange │                      │
-│  MQ Producer ────┼──────────────────────────▶│  Command Consumer    │
-│                  │                           │        │             │
-│                  │   robot.results queue     │   Task Simulator     │
-│  MQ Consumer ◀───┼────────────────────────── │        │             │
-│                  │                           │  Result Publisher    │
-└──────────────────┘                           └──────────────────────┘
+┌──────────────────┐         RabbitMQ           ┌──────────────────────┐
+│  BIC Lab Service │   robot.exchange (TOPIC)   │  Mock Robot Server   │
+│                  │                            │                      │
+│  MQ Producer ────┼── {robot_id}.cmd ────────▶ │  Command Consumer    │
+│                  │                            │        │             │
+│                  │   {robot_id}.result        │   Task Simulator     │
+│  Result Consumer◀┼── {robot_id}.log     ◀──── │        │             │
+│  Log Consumer   ◀┼── {robot_id}.hb      ◀──── │  Result Publisher    │
+│  HB Consumer    ◀┼───────────────────────     │  Log Producer        │
+│                  │                            │  Heartbeat Publisher  │
+└──────────────────┘                            └──────────────────────┘
 ```
+
+All messages flow through a single **TOPIC exchange** (`robot.exchange`) with per-robot routing keys:
+- `{robot_id}.cmd` — Commands from BIC Lab Service → Robot
+- `{robot_id}.result` — Final task results from Robot → BIC Lab Service
+- `{robot_id}.log` — Real-time intermediate state updates during execution
+- `{robot_id}.hb` — Periodic heartbeat messages (every 2s)
 
 **Dependencies:** RabbitMQ only. No PostgreSQL, Redis, or S3 required.
 
@@ -66,43 +74,71 @@ docker-compose -f docker-compose.yml -f docker-compose.override.yml up -d
 uv sync
 
 # Run directly
-uv run python -m src
+uv run python -m src.main
 ```
 
 ## Configuration Reference
 
-All settings are loaded from environment variables with sensible defaults.
+All settings are loaded from environment variables with `MOCK_` prefix via pydantic-settings.
 
-| Variable                       | Default                             | Description                                                             |
-| ------------------------------ | ----------------------------------- | ----------------------------------------------------------------------- |
-| `MOCK_MQ_HOST`                 | `localhost`                         | RabbitMQ host                                                           |
-| `MOCK_MQ_PORT`                 | `5672`                              | RabbitMQ port                                                           |
-| `MOCK_MQ_USER`                 | `guest`                             | RabbitMQ username                                                       |
-| `MOCK_MQ_PASSWORD`             | `guest`                             | RabbitMQ password                                                       |
-| `MOCK_MQ_VHOST`                | `/`                                 | RabbitMQ virtual host                                                   |
-| `MOCK_MQ_COMMAND_EXCHANGE`     | `robot.commands`                    | Exchange to consume commands from                                       |
-| `MOCK_MQ_COMMAND_ROUTING_KEY`  | `robot.command`                     | Routing key to bind on the command exchange                             |
-| `MOCK_MQ_RESULT_QUEUE`         | `robot.results`                     | Queue to publish result messages to                                     |
-| `MOCK_ROBOT_ID`                | `robot-001`                         | Simulated robot identifier                                              |
-| `MOCK_DEFAULT_SCENARIO`        | `success`                           | Default scenario: `success`, `failure`, or `timeout`                    |
-| `MOCK_FAILURE_RATE`            | `0.0`                               | Probability of injecting a failure (0.0 - 1.0)                          |
-| `MOCK_TIMEOUT_RATE`            | `0.0`                               | Probability of injecting a timeout / no response (0.0 - 1.0)            |
-| `MOCK_BASE_DELAY_MULTIPLIER`   | `0.1`                               | Speed multiplier for task durations (0.01 = 100x fast, 1.0 = realistic) |
-| `MOCK_IMAGE_BASE_URL`          | `http://minio:9000/bic-robot/captures` | Base URL returned in mock captured image URLs                        |
-| `MOCK_LOG_LEVEL`               | `INFO`                              | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`)                         |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MOCK_MQ_HOST` | `localhost` | RabbitMQ host |
+| `MOCK_MQ_PORT` | `5672` | RabbitMQ port |
+| `MOCK_MQ_USER` | `guest` | RabbitMQ username |
+| `MOCK_MQ_PASSWORD` | `guest` | RabbitMQ password |
+| `MOCK_MQ_VHOST` | `/` | RabbitMQ virtual host |
+| `MOCK_MQ_EXCHANGE` | `robot.exchange` | Shared TOPIC exchange for all message routing |
+| `MOCK_MQ_CONNECTION_TIMEOUT` | `30` | RabbitMQ connection timeout (seconds) |
+| `MOCK_MQ_HEARTBEAT` | `60` | AMQP heartbeat interval (seconds) |
+| `MOCK_MQ_PREFETCH_COUNT` | `5` | Consumer prefetch count |
+| `MOCK_ROBOT_ID` | `00000000-0000-4000-a000-000000000001` | Simulated robot identifier (UUID) |
+| `MOCK_DEFAULT_SCENARIO` | `success` | Default scenario: `success`, `failure`, or `timeout` |
+| `MOCK_FAILURE_RATE` | `0.0` | Probability of injecting a failure (0.0 - 1.0) |
+| `MOCK_TIMEOUT_RATE` | `0.0` | Probability of injecting a timeout / no response (0.0 - 1.0) |
+| `MOCK_BASE_DELAY_MULTIPLIER` | `0.1` | Speed multiplier for task durations (0.01 = 100x fast, 1.0 = realistic) |
+| `MOCK_MIN_DELAY_SECONDS` | `0.5` | Minimum delay floor (seconds) |
+| `MOCK_IMAGE_BASE_URL` | `http://minio:9000/bic-robot/captures` | Base URL returned in mock captured image URLs |
+| `MOCK_SERVER_NAME` | `mock-robot-server` | Server instance name for logging |
+| `MOCK_LOG_LEVEL` | `INFO` | Log level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `MOCK_HEARTBEAT_INTERVAL` | `2.0` | Seconds between heartbeat messages |
+| `MOCK_CC_INTERMEDIATE_INTERVAL` | `300.0` | CC progress update interval at 1.0x (seconds) |
+| `MOCK_RE_INTERMEDIATE_INTERVAL` | `300.0` | RE progress update interval at 1.0x (seconds) |
 
-## Supported Task Types
+## Supported Task Types (All 13 Tasks)
 
-| Task Name                         | Realistic Duration    | At 0.1x Multiplier | Notes                                                |
-| --------------------------------- | --------------------- | ------------------ | ---------------------------------------------------- |
-| `setup_cartridges`                | 15 - 30 s             | 1.5 - 3 s          | Retrieves and mounts silica + sample cartridges      |
-| `setup_tube_rack`                 | 10 - 20 s             | 1 - 2 s            | Retrieves and mounts tube rack at work station       |
-| `collapse_cartridges`             | 10 - 15 s             | 1 - 1.5 s          | Cleans up cartridges after process completion        |
-| `take_photo`                      | 2 - 5 s per component | 0.2 - 0.5 s        | Navigates to station, captures device screen         |
-| `start_column_chromatography`     | 30 - 60 min           | 3 - 6 min          | Duration scales with gradient points and column size |
-| `terminate_column_chromatography` | 5 - 10 s              | 0.5 - 1 s          | Stops CC operation, captures result images           |
-| `fraction_consolidation`          | ~1 min (tube count)   | ~6 s               | Collects fractions from tubes into flask             |
-| `start_evaporation`               | 30 - 90 min           | 3 - 9 min          | Duration scales with evaporation profile stages      |
+| Task Name | Realistic Duration | At 0.1x Multiplier | Notes |
+|-----------|-------------------|-------------------|-------|
+| `setup_tubes_to_column_machine` | 15 - 30 s | 1.5 - 3 s | Retrieves and mounts silica + sample cartridges |
+| `setup_tube_rack` | 10 - 20 s | 1 - 2 s | Retrieves and mounts tube rack at work station |
+| `take_photo` | 2 - 5 s per component | 0.2 - 0.5 s | Navigates to station, captures device screen |
+| `start_column_chromatography` | 30 - 60 min | 3 - 6 min | Long-running; intermediate updates via `.log` channel |
+| `terminate_column_chromatography` | 5 - 10 s | 0.5 - 1 s | Stops CC operation, captures result images |
+| `fraction_consolidation` | ~1 min (tube count) | ~6 s | Collects fractions from tubes into flask |
+| `start_evaporation` | 30 - 90 min | 3 - 9 min | Long-running; sensor ramp via `.log` channel |
+| `stop_evaporation` | 5 - 10 s | 0.5 - 1 s | Stops evaporator and returns flask |
+| `collapse_cartridges` | 10 - 15 s | 1 - 1.5 s | Cleans up cartridges after process completion |
+| `setup_ccs_bins` | 10 - 15 s | 1 - 1.5 s | Sets up waste bins at CC workstation |
+| `return_ccs_bins` | 10 - 15 s | 1 - 1.5 s | Returns used bins to waste area |
+| `return_cartridges` | 10 - 15 s | 1 - 1.5 s | Removes and returns used cartridges |
+| `return_tube_rack` | 10 - 15 s | 1 - 1.5 s | Removes and returns used tube rack |
+
+## World State Tracking & Preconditions
+
+The mock server maintains an in-memory `WorldState` that tracks all entities (robots, devices, materials) and validates preconditions before executing tasks. This enables realistic error simulation based on current system state.
+
+**Error Code Ranges:**
+- `1000-1009`: General errors (unknown task, validation failure)
+- `1010-1139`: Task-specific failures (per-task 10-code ranges)
+- `2000-2099`: Precondition violations (state-driven errors)
+
+**Special Commands:**
+- `reset_state`: Clears WorldState back to initial conditions (useful for testing)
+
+**Precondition Examples:**
+- `setup_cartridges` fails if ext_module already has cartridges (code 2001)
+- `terminate_cc` fails if CC system not running (code 2030-2031)
+- `collapse_cartridges` fails if cartridges not in 'used' state (code 2010-2013)
 
 ## Scenarios
 
@@ -112,16 +148,16 @@ The mock server supports three execution scenarios, controlled globally by `MOCK
 
 The default mode. The server simulates the full task lifecycle:
 1. Acknowledges command receipt
-2. Publishes intermediate entity state updates during execution (e.g., cartridge `mounted`, CC system `running`)
+2. Publishes intermediate entity state updates via `{robot_id}.log` during execution
 3. Waits for the simulated duration
-4. Publishes a final `RobotResult` with `code: 0`, updated entity states, and any captured images
+4. Publishes a final `RobotResult` via `{robot_id}.result` with `code: 200`, updated entity states, and any captured images
 
 ### Failure
 
 Simulates a robot error mid-task:
 1. Begins execution normally with intermediate updates
 2. Aborts partway through
-3. Publishes a `RobotResult` with `code: 1`, an error message, and partially updated entity states
+3. Publishes a `RobotResult` with task-specific error code (1010-1139), an error message, and partially updated entity states
 
 ### Timeout
 
@@ -135,45 +171,49 @@ Simulates a non-responsive robot:
 ## Message Flow
 
 ```
-1. BIC Lab Service publishes a RobotCommand to `robot.commands` exchange
-   with routing key `robot.command`
+1. BIC Lab Service publishes a RobotCommand to `robot.exchange` (TOPIC)
+   with routing key `{robot_id}.cmd` (e.g., `talos_001.cmd`)
 
-2. Mock Robot Server consumes the message:
+2. Mock Robot Server consumes from its `{robot_id}.cmd` queue:
    - Deserializes the command using Pydantic models
+   - Validates preconditions against WorldState
    - Selects scenario (success / failure / timeout)
    - Logs the received command
 
 3. During simulated execution:
-   - Publishes intermediate entity update messages to `robot.results`
-     (e.g., cartridge state: idle -> mounted)
-   - Sleeps for the computed duration (base delay x multiplier)
+   - Publishes intermediate entity updates to `{robot_id}.log`
+     (e.g., cartridge state: available -> mounted)
+   - Publishes heartbeats to `{robot_id}.hb` every 2 seconds
+   - Sleeps for the computed duration (base delay × multiplier)
 
 4. On completion:
    - Builds a RobotResult with:
      - task_id matching the command
-     - code: 0 (success) or 1 (failure)
+     - code: 200 (success) or 1010-2099 (failure)
      - entity_updates: list of state changes
      - captured_images: mock image URLs (for take_photo, terminate_cc)
-   - Publishes the result to `robot.results` queue
+   - Publishes the result to `{robot_id}.result` routing key
+   - Updates WorldState with final entity states
 ```
 
 ## Development
 
 ### Tech Stack
 
-- **Python 3.12+**
-- **aio-pika** -- async RabbitMQ client
-- **pydantic + pydantic-settings** -- configuration and message schemas
-- **loguru** -- structured logging
+- **Python 3.12+**, async-first
+- **aio-pika** — async RabbitMQ client
+- **pydantic + pydantic-settings** — configuration and message schemas
+- **loguru** — structured logging
+- **uv** — package manager
+- **ruff** — lint/format
+- **pytest** — testing
 
 ### Project Structure
-
-Uses Python namespace packages (no `__init__.py` files). All imports use absolute paths.
 
 ```
 mock-robot-server/
 ├── src/
-│   ├── __main__.py                    # Entry point: python -m src
+│   ├── __main__.py                    # Entry point: python -m src.main
 │   ├── main.py                        # Server lifecycle (startup/shutdown)
 │   ├── config.py                      # pydantic-settings with MOCK_ prefix
 │   ├── schemas/
@@ -181,12 +221,13 @@ mock-robot-server/
 │   │   ├── commands.py                # RobotCommand wrapper + re-exports
 │   │   └── results.py                 # RobotResult + entity update models
 │   ├── simulators/
-│   │   ├── base.py                    # BaseSimulator ABC
+│   │   ├── base.py                    # BaseSimulator ABC + WorldState helpers
 │   │   ├── setup_simulator.py         # setup_cartridges, setup_tube_rack, collapse
 │   │   ├── cc_simulator.py            # start_cc (long), terminate_cc (quick)
 │   │   ├── photo_simulator.py         # take_photo
 │   │   ├── consolidation_simulator.py # fraction_consolidation
-│   │   └── evaporation_simulator.py   # start_evaporation (long)
+│   │   ├── evaporation_simulator.py   # start_evaporation (long)
+│   │   └── cleanup_simulator.py       # stop_evaporation, setup/return bins, return cartridges/rack
 │   ├── generators/
 │   │   ├── entity_updates.py          # Factory functions for 10 entity update types
 │   │   ├── images.py                  # Mock image URL generation
@@ -194,20 +235,38 @@ mock-robot-server/
 │   ├── scenarios/
 │   │   ├── manager.py                 # ScenarioManager (success/failure/timeout)
 │   │   └── failures.py                # Task-specific failure messages
+│   ├── state/
+│   │   ├── world_state.py             # In-memory entity state tracking
+│   │   └── preconditions.py           # Pre-execution validation per task
 │   ├── mq/
 │   │   ├── connection.py              # RabbitMQ robust connection (singleton)
 │   │   ├── consumer.py                # Command consumer + task routing
-│   │   └── producer.py                # Result publisher
+│   │   ├── producer.py                # Result publisher (final results)
+│   │   ├── log_producer.py            # Log publisher (intermediate updates)
+│   │   └── heartbeat.py               # Periodic heartbeat publisher
 │   └── tests/
 │       ├── conftest.py                # Shared test fixtures
 │       ├── test_generators.py         # Entity update, image, timing tests
 │       ├── test_scenarios.py          # ScenarioManager + failure message tests
-│       └── test_schemas.py            # Command/result parsing + serialization tests
+│       ├── test_schemas.py            # Command/result parsing + serialization tests
+│       ├── test_consumer_integration.py # Consumer dispatch flow tests
+│       ├── test_simulator_integration.py # End-to-end task execution tests
+│       ├── test_cleanup_simulator.py  # Cleanup task tests (5 tasks)
+│       ├── test_heartbeat.py          # Heartbeat publisher lifecycle tests
+│       ├── test_log_producer.py       # Log producer tests
+│       ├── test_photo_device_state.py # Photo device state update tests
+│       ├── test_photo_integration.py  # Photo integration tests
+│       ├── test_preconditions.py      # Precondition checker tests
+│       ├── test_world_state.py        # WorldState tracking tests
+│       └── test_full_workflow.py      # Full CC experiment workflow tests
+├── docs/
+│   ├── note.md                        # Protocol spec (ground truth)
+│   └── ROBOT_ID_DESIGN.md            # Robot ID design decisions
 ├── Dockerfile
 ├── docker-compose.mock.yml
 ├── pyproject.toml
-├── .env.mock
-└── README.md
+├── .env
+└── CLAUDE.md
 ```
 
 ### Protocol Schema Management
@@ -241,10 +300,10 @@ Modify base duration ranges in `generators/timing.py`. Each task has a `(min, ma
 ### Running Tests
 
 ```bash
-uv run pytest tests/ -v
+uv run pytest src/tests/ -v
 ```
 
-37 unit tests cover generators (entity updates, images, timing), scenarios (ScenarioManager, failure messages), and schemas (command/result parsing, discriminated union serialization).
+134 tests cover generators, scenarios, schemas, consumer integration, simulator integration, cleanup tasks, heartbeat, log producer, photo handling, preconditions, world state tracking, and full CC workflow.
 
 ## Case Study: Column Chromatography Workflow
 
@@ -252,11 +311,12 @@ This case study demonstrates a complete column chromatography workflow using the
 
 ### Scenario
 
-An AI agent orchestrates a column chromatography experiment on work station `ws-01` using robot `robot-001`. The workflow consists of 7 sequential steps:
+An AI agent orchestrates a column chromatography experiment. The workflow consists of 8 sequential steps:
 
 ```
 setup_cartridges -> setup_tube_rack -> take_photo -> start_cc
     -> terminate_cc -> fraction_consolidation -> start_evaporation
+    -> collapse_cartridges
 ```
 
 ### Step 1: Setup Cartridges
@@ -279,7 +339,7 @@ The agent publishes a command to mount silica and sample cartridges at the work 
 }
 ```
 
-**Mock behavior:** 1.5-3s delay (at 0.1x multiplier). Returns `code: 0` with entity updates:
+**Mock behavior:** 1.5-3s delay (at 0.1x multiplier). Returns `code: 200` with entity updates:
 - Robot -> `idle` at `ws-01`
 - Silica cartridge `sc-001` -> `mounted` at `ws-01`
 - Sample cartridge `sac-001` -> `mounted` at `ws-01`
@@ -345,9 +405,9 @@ The agent publishes a command to mount silica and sample cartridges at the work 
 
 **Mock behavior (long-running pattern):**
 1. Message is acknowledged immediately; simulation runs in a background asyncio task
-2. **Initial intermediate update** (`code: -1`): robot -> `watch_column_machine_screen`, CC system -> `running` with experiment params and ISO timestamp, cartridges -> `using`, tube rack -> `using`
-3. **Periodic progress updates**: CC system -> `running` published every N seconds (total duration = 45 x 60 x 0.1 = 270s at 0.1x)
-4. **Final result** (`code: 0`): robot -> `wait_for_screen_manipulation`, CC system -> `running`
+2. **Initial intermediate update** (via `{robot_id}.log`): robot -> `watch_column_machine_screen`, CC system -> `running` with experiment params and ISO timestamp, cartridges -> `using`, tube rack -> `using`
+3. **Periodic progress updates** (via `{robot_id}.log`): CC system -> `running` published every N seconds
+4. **Final result** (via `{robot_id}.result`, `code: 200`): robot -> `wait_for_screen_manipulation`, CC system -> `running`
 
 ### Step 5: Terminate CC
 
@@ -382,7 +442,7 @@ The agent publishes a command to mount silica and sample cartridges at the work 
 }
 ```
 
-**Mock behavior:** Delay scales with tube count (5 collected x 3s + 10s base = 25s x 0.1 ~ 2.5s). Returns:
+**Mock behavior:** Delay scales with tube count (5 collected × 3s + 10s base = 25s × 0.1 ≈ 2.5s). Returns:
 - Robot -> `moving_with_round_bottom_flask`
 - Tube rack -> `used,pulled_out,ready_for_recovery`
 - Round bottom flask -> `used,ready_for_evaporate`
@@ -406,10 +466,6 @@ The agent publishes a command to mount silica and sample cartridges at the work 
         "target_pressure": 200.0
       },
       "stop": {
-        "lower_height": 150.0,
-        "rpm": 0,
-        "target_temperature": 45.0,
-        "target_pressure": 200.0,
         "trigger": { "type": "time_from_start", "time_in_sec": 3600 }
       }
     },
@@ -419,9 +475,28 @@ The agent publishes a command to mount silica and sample cartridges at the work 
 ```
 
 **Mock behavior (long-running pattern):**
-1. **Initial intermediate update**: robot -> `observe_evaporation`, evaporator -> `running=True` with ambient values (`current_temperature=25.0C`, `current_pressure=1013.0 mbar`)
-2. **Periodic ramp updates**: evaporator readings linearly interpolate toward targets (temperature: 25C -> 45C, pressure: 1013 -> 200 mbar) over the simulation duration
-3. **Final result**: evaporator -> `running=False`, `current_temperature=45.0`, `current_pressure=200.0`, robot -> `idle`
+1. **Initial intermediate update** (via `{robot_id}.log`): robot -> `observe_evaporation`, evaporator -> `running=True` with ambient values (`current_temperature=25.0C`, `current_pressure=1013.0 mbar`)
+2. **Periodic ramp updates** (via `{robot_id}.log`): evaporator readings linearly interpolate toward targets (temperature: 25C -> 45C, pressure: 1013 -> 200 mbar)
+3. **Final result** (via `{robot_id}.result`, `code: 200`): evaporator -> `running=False`, `current_temperature=45.0`, `current_pressure=200.0`, robot -> `idle`
+
+### Step 8: Collapse Cartridges
+
+```json
+{
+  "task_id": "task-008",
+  "task_name": "collapse_cartridges",
+  "params": {
+    "work_station_id": "ws-01",
+    "silica_cartridge_id": "sc-001",
+    "sample_cartridge_id": "sac-001",
+    "end_state": "idle"
+  }
+}
+```
+
+**Mock behavior:** 1-1.5s delay. Returns cartridges -> `used` (ready for disposal), CCS ext module -> `used`, robot -> `idle`.
+
+**Prerequisite:** Robot must be `idle`. If step 7 used `post_run_state: "observe_evaporation"`, run `stop_evaporation` first.
 
 ### Testing Error Handling
 
@@ -429,13 +504,13 @@ Inject failures to test the main service's error recovery:
 
 ```bash
 # 20% of tasks fail with realistic robot errors
-MOCK_FAILURE_RATE=0.2 uv run python -m src
+MOCK_FAILURE_RATE=0.2 uv run python -m src.main
 
 # All tasks timeout (no response published)
-MOCK_DEFAULT_SCENARIO=timeout uv run python -m src
+MOCK_DEFAULT_SCENARIO=timeout uv run python -m src.main
 
 # Fast iteration: 100x speed + 10% failure rate
-MOCK_BASE_DELAY_MULTIPLIER=0.01 MOCK_FAILURE_RATE=0.1 uv run python -m src
+MOCK_BASE_DELAY_MULTIPLIER=0.01 MOCK_FAILURE_RATE=0.1 uv run python -m src.main
 ```
 
 Example failure result for `setup_cartridges`:
@@ -450,10 +525,12 @@ Example failure result for `setup_cartridges`:
 
 ### Key Observations
 
-1. **Quick vs. long-running**: Tasks like `setup_cartridges` (15-30s) block the consumer until complete, while `start_cc` and `start_evaporation` run in background asyncio tasks -- the consumer immediately acknowledges the message and can process other commands concurrently.
+1. **Quick vs. long-running**: Tasks like `setup_cartridges` (15-30s) block the consumer until complete, while `start_cc` and `start_evaporation` run in background asyncio tasks — the consumer immediately acknowledges the message and can process other commands concurrently.
 
-2. **Intermediate updates**: Long-running tasks publish entity state changes in real-time (`code: -1`), allowing the main service to update its database incrementally rather than waiting for the final result.
+2. **Intermediate updates via log channel**: Long-running tasks publish entity state changes in real-time via `{robot_id}.log`, allowing the main service to update its database incrementally. Final results go via `{robot_id}.result`.
 
 3. **Timing fidelity**: At `MOCK_BASE_DELAY_MULTIPLIER=0.01`, a 45-minute CC run completes in ~27 seconds. At `1.0`, it takes the full 45 minutes. This enables both fast CI testing and realistic integration testing.
 
 4. **Scenario injection**: `MOCK_FAILURE_RATE` and `MOCK_TIMEOUT_RATE` apply per-message random injection, while `MOCK_DEFAULT_SCENARIO` sets a global default. This allows testing specific error paths or general resilience.
+
+5. **WorldState preconditions**: The server validates entity states before execution, returning 2000-series error codes for precondition violations. This catches workflow errors (e.g., starting CC when already running) without needing the real BIC Lab Service validation.

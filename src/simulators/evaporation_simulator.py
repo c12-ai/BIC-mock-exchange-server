@@ -61,6 +61,7 @@ class EvaporationSimulator(BaseSimulator):
         # 2. Publish initial intermediate updates (ambient values)
         initial_temp = 25.0  # Ambient
         initial_pressure = 1013.0  # Ambient
+        flask_id = self._resolve_entity_id("round_bottom_flask", params.work_station_id)
         initial_updates = [
             create_robot_update(self.robot_id, params.work_station_id, params.post_run_state),
             create_evaporator_update(
@@ -73,7 +74,7 @@ class EvaporationSimulator(BaseSimulator):
                 target_pressure=target_pressure,
                 current_pressure=initial_pressure,
             ),
-            create_round_bottom_flask_update(params.work_station_id, params.work_station_id, "used,evaporating"),
+            create_round_bottom_flask_update(flask_id, params.work_station_id, "used,evaporating"),
         ]
         await self._producer.publish_intermediate_update(task_id, initial_updates)
 

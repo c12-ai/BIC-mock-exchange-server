@@ -199,7 +199,7 @@ src/
   generators/        # Pure factories for entity updates, images, timing
   scenarios/         # Failure/timeout injection
   state/             # WorldState tracking, precondition checking
-  tests/             # 113 tests (unit + integration)
+  tests/             # 134 tests (unit + integration)
 ```
 
 ### Running
@@ -208,13 +208,16 @@ uv run python -m src.main          # Run mock server
 uv run pytest src/tests/           # Run tests
 ```
 
-### Key Config (`.env.mock`)
+### Key Config (`.env`)
 ```env
 MOCK_MQ_HOST=localhost
-MOCK_ROBOT_ID=talos_001
-MOCK_BASE_DELAY_MULTIPLIER=0.1    # 10x speed (0.01 = 100x)
+MOCK_MQ_EXCHANGE=robot.exchange                          # Single TOPIC exchange
+MOCK_ROBOT_ID=00000000-0000-4000-a000-000000000001       # UUID format
+MOCK_BASE_DELAY_MULTIPLIER=0.01   # 100x speed (0.1 = 10x, 1.0 = realistic)
 MOCK_FAILURE_RATE=0.0             # 0.0-1.0
+MOCK_TIMEOUT_RATE=0.0             # 0.0-1.0
 MOCK_DEFAULT_SCENARIO=success     # success | failure | timeout
+MOCK_HEARTBEAT_INTERVAL=2.0      # seconds between heartbeats
 ```
 
 ### Implemented Skills (All 13 Tasks)
@@ -252,3 +255,15 @@ The mock server tracks an in-memory world state for all entities (robots, device
 ### Lessons Learned
 
 - **HeartbeatPublisher now reports actual robot state from WorldState** — Previously, heartbeat messages always reported `state: "idle"` regardless of the robot's actual operational state. This caused the BIC Lab Service to overwrite real robot states (e.g., `"watch_column_machine_screen"`) back to `"idle"` during heartbeat processing. The fix passes `WorldState` to `HeartbeatPublisher` so it reads the current robot state from the in-memory state tracker (2026-02-07).
+
+- **WorldState entity keys don't always match `work_station_id`** — Materials like `tube_rack` and `round_bottom_flask` are keyed in WorldState by their actual entity ID (often a `location_id` string like `"bic_09C_l3_002"`), NOT by the `work_station_id` where they're located. Both `PreconditionChecker` and simulators must resolve entities by searching the `location` property via `_find_entity_at_location()`, not by assuming `entity_id == work_station_id`. See `src/state/preconditions.py:_find_entity_at_location()` and `src/simulators/base.py:_resolve_entity_id()` (2026-02-07).
+
+- **Simulators must resolve material UUIDs from WorldState** — When commands like `start_cc`, `terminate_cc`, and `fraction_consolidation` don't include explicit material IDs, simulators use `_resolve_entity_id(entity_type, work_station_id)` from `BaseSimulator` to look up the actual entity ID from WorldState by searching for entities located at the given work_station_id. This ensures entity update messages contain the correct IDs that BIC-lab-service can map back to DB records. See `cc_simulator.py`, `consolidation_simulator.py`, `evaporation_simulator.py` (2026-02-07).
+
+- **Never add fields to command schemas that aren't in `docs/robots/note.md`** — The `note.md` in BIC-lab-service is the canonical protocol spec. Adding fields like `tube_rack_id` to `SetupTubeRackParams` that aren't in the spec creates protocol drift. Instead, resolve IDs internally via WorldState lookups. Always cross-reference `note.md` before changing message schemas (2026-02-07).
+
+- **Never relax strict enum types to `str` — add missing values to the enum instead** — When encountering validation errors for unknown enum values (e.g., robot state `"moving"` not in `RobotState`), the correct fix is to add the missing values to the enum, NOT to change the field type from enum to `str`. Intermediate robot states (`moving`, `terminating_cc`, `pulling_out_tube_rack`) were added to `RobotState` in both this project and BIC-lab-service (2026-02-07).
+
+- **Photo simulator must map all actual device_type values** — The `entity_type_map` in `photo_simulator.py` must include all device_type strings that BIC-lab-service sends (e.g., `isco_combiflash_nextgen_300`, `column_chromatography_system`, `rotary_evaporator`), not just shortened aliases. Missing mappings caused "Unknown device_type for photo" warnings (2026-02-07).
+
+- **Test entity IDs must match WorldState keys** — In `test_full_workflow.py`, entity lookups in assertions must use the actual entity IDs (e.g., `sc-001`, `samp-001`, `rack-loc-1`) that were registered in WorldState during setup, not `work_station_id`. WorldState keys materials by their entity ID, not by the work station where they're located (2026-02-07).

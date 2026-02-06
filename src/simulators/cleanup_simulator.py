@@ -1,4 +1,7 @@
-"""Simulator for cleanup/teardown tasks: stop_evaporation, setup_ccs_bins, return_ccs_bins, return_cartridges, return_tube_rack."""
+"""Simulator for cleanup/teardown tasks.
+
+Handles: stop_evaporation, setup_ccs_bins, return_ccs_bins, return_cartridges, return_tube_rack.
+"""
 
 from __future__ import annotations
 

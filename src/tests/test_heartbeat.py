@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 from unittest.mock import AsyncMock, Mock, patch
 
 import aio_pika
@@ -149,10 +150,8 @@ class TestHeartbeatPublisher:
 
         # Clean up
         heartbeat._task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await heartbeat._task
-        except asyncio.CancelledError:
-            pass
 
     @pytest.mark.asyncio
     async def test_stop_cancels_task_gracefully(self, mock_settings) -> None:
@@ -208,10 +207,8 @@ class TestHeartbeatPublisher:
         # Stop the loop
         heartbeat._running = False
         task.cancel()
-        try:
+        with contextlib.suppress(asyncio.CancelledError):
             await task
-        except asyncio.CancelledError:
-            pass
 
         # Should have attempted to publish at least twice despite first failure
         assert call_count >= 2

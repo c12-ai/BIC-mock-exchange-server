@@ -6,7 +6,7 @@ skill execution begins. Returns error codes in 2000-2099 range for violations.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 from pydantic import BaseModel
@@ -39,6 +39,23 @@ class PreconditionChecker:
         """
         self._world_state = world_state
 
+    def _find_entity_at_location(self, entity_type: str, location: str) -> tuple[str, dict[str, Any]] | None:
+        """Find an entity by type whose ``location`` property matches.
+
+        Some entities (tube_rack, round_bottom_flask) are keyed in WorldState
+        by their location_id string rather than by work_station_id.  This
+        helper searches all entities of the given type for one located at
+        ``location``.
+
+        Returns:
+            (entity_id, properties) tuple, or None if not found.
+        """
+        entities = self._world_state.get_entities_by_type(entity_type)
+        for entity_id, props in entities.items():
+            if props.get("location") == location:
+                return entity_id, props
+        return None
+
     def check(self, task_name: TaskName, params: BaseModel) -> PreconditionResult:
         """Check if preconditions are met for a task.
 
@@ -50,28 +67,28 @@ class PreconditionChecker:
             PreconditionResult with ok=True if checks pass, ok=False with error otherwise
         """
         # Import here to avoid circular dependency
-        from src.schemas.commands import TaskName as TN
+        from src.schemas.commands import TaskName
 
         match task_name:
-            case TN.SETUP_CARTRIDGES:
+            case TaskName.SETUP_CARTRIDGES:
                 return self._check_setup_cartridges(params)
-            case TN.COLLAPSE_CARTRIDGES:
+            case TaskName.COLLAPSE_CARTRIDGES:
                 return self._check_collapse_cartridges(params)
-            case TN.START_CC:
+            case TaskName.START_CC:
                 return self._check_start_cc(params)
-            case TN.TERMINATE_CC:
+            case TaskName.TERMINATE_CC:
                 return self._check_terminate_cc(params)
-            case TN.FRACTION_CONSOLIDATION:
+            case TaskName.FRACTION_CONSOLIDATION:
                 return self._check_fraction_consolidation(params)
-            case TN.START_EVAPORATION:
+            case TaskName.START_EVAPORATION:
                 return self._check_start_evaporation(params)
-            case TN.STOP_EVAPORATION:
+            case TaskName.STOP_EVAPORATION:
                 return self._check_stop_evaporation(params)
-            case TN.RETURN_CCS_BINS:
+            case TaskName.RETURN_CCS_BINS:
                 return self._check_return_ccs_bins(params)
-            case TN.RETURN_CARTRIDGES:
+            case TaskName.RETURN_CARTRIDGES:
                 return self._check_return_cartridges(params)
-            case TN.RETURN_TUBE_RACK:
+            case TaskName.RETURN_TUBE_RACK:
                 return self._check_return_tube_rack(params)
             case _:
                 # Tasks with no meaningful preconditions (take_photo, setup_tube_rack, setup_ccs_bins)
@@ -214,28 +231,35 @@ class PreconditionChecker:
         if work_station_id is None:
             return PreconditionResult(ok=True)
 
+        # Try direct lookup first, then fall back to location-based search.
+        # tube_rack entities are keyed by location_id (e.g. "bic_09C_l3_002"),
+        # not by work_station_id.
         tube_rack = self._world_state.get_entity("tube_rack", work_station_id)
+        if tube_rack is None:
+            result = self._find_entity_at_location("tube_rack", work_station_id)
+            if result is not None:
+                _, tube_rack = result
 
         if tube_rack is None:
-            logger.warning("Precondition failed for fraction_consolidation: tube_rack {} not found", work_station_id)
+            logger.warning("Precondition failed for fraction_consolidation: tube_rack at {} not found", work_station_id)
             return PreconditionResult(
                 ok=False,
                 error_code=2040,
-                error_msg=f"Tube rack {work_station_id} not found in world state",
+                error_msg=f"Tube rack at work station {work_station_id} not found in world state",
             )
 
         state = tube_rack.get("state", "")
         # Accept "used" or compound states like "used,pulled_out"
         if "used" not in state and "using" not in state:
             logger.warning(
-                "Precondition failed for fraction_consolidation: tube_rack {} in state '{}', expected to contain 'used' or 'using'",
+                "Precondition failed for fraction_consolidation: tube_rack at {} state '{}', need 'used'/'using'",
                 work_station_id,
                 state,
             )
             return PreconditionResult(
                 ok=False,
                 error_code=2041,
-                error_msg=f"Tube rack {work_station_id} must be in 'used' or 'using' state (current: {state})",
+                error_msg=f"Tube rack at {work_station_id} must be in 'used' or 'using' state (current: {state})",
             )
 
         return PreconditionResult(ok=True)
@@ -296,12 +320,10 @@ class PreconditionChecker:
 
         # At least one chute must have bins
         has_bins = False
-        if left_chute is not None:
-            if left_chute.get("front_waste_bin") or left_chute.get("back_waste_bin"):
-                has_bins = True
-        if right_chute is not None:
-            if right_chute.get("front_waste_bin") or right_chute.get("back_waste_bin"):
-                has_bins = True
+        if left_chute is not None and (left_chute.get("front_waste_bin") or left_chute.get("back_waste_bin")):
+            has_bins = True
+        if right_chute is not None and (right_chute.get("front_waste_bin") or right_chute.get("back_waste_bin")):
+            has_bins = True
 
         if not has_bins:
             logger.warning(

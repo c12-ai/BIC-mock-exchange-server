@@ -21,13 +21,21 @@ from pydantic import BaseModel, Field
 
 
 class RobotState(StrEnum):
-    """Robot operational states."""
+    """Robot operational states.
+
+    Includes both stable end-states and intermediate states reported
+    during task execution.
+    """
 
     IDLE = "idle"
     WAIT_FOR_SCREEN = "wait_for_screen_manipulation"
     WATCH_CC_SCREEN = "watch_column_machine_screen"
     MOVING_WITH_FLASK = "moving_with_round_bottom_flask"
     OBSERVE_EVAPORATION = "observe_evaporation"
+    # Intermediate states reported during task execution
+    MOVING = "moving"
+    TERMINATING_CC = "terminating_cc"
+    PULLING_OUT_TUBE_RACK = "pulling_out_tube_rack"
 
 
 class TaskName(StrEnum):

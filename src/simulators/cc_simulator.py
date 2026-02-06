@@ -77,6 +77,11 @@ class CCSimulator(BaseSimulator):
         start_timestamp = generate_robot_timestamp()
         experiment_params_dict = params.experiment_params.model_dump()
 
+        # Resolve material IDs from WorldState (setup tasks tracked them earlier)
+        silica_id = self._resolve_entity_id("silica_cartridge", params.work_station_id)
+        sample_id = self._resolve_entity_id("sample_cartridge", params.work_station_id)
+        tube_rack_id = self._resolve_entity_id("tube_rack", params.work_station_id)
+
         initial_updates = [
             create_robot_update(self.robot_id, params.work_station_id, RobotState.WATCH_CC_SCREEN),
             create_cc_system_update(
@@ -85,9 +90,9 @@ class CCSimulator(BaseSimulator):
                 experiment_params=experiment_params_dict,
                 start_timestamp=start_timestamp,
             ),
-            create_silica_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USING),
-            create_sample_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USING),
-            create_tube_rack_update(params.work_station_id, params.work_station_id, EntityState.USING),
+            create_silica_cartridge_update(silica_id, params.work_station_id, EntityState.USING),
+            create_sample_cartridge_update(sample_id, params.work_station_id, EntityState.USING),
+            create_tube_rack_update(tube_rack_id, params.work_station_id, EntityState.USING),
         ]
         await self._producer.publish_intermediate_update(task_id, initial_updates)
 
@@ -164,6 +169,11 @@ class CCSimulator(BaseSimulator):
                     start_timestamp,
                 )
 
+        # Resolve material IDs from WorldState
+        silica_id = self._resolve_entity_id("silica_cartridge", params.work_station_id)
+        sample_id = self._resolve_entity_id("sample_cartridge", params.work_station_id)
+        tube_rack_id = self._resolve_entity_id("tube_rack", params.work_station_id)
+
         updates = [
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
             create_cc_system_update(
@@ -172,9 +182,9 @@ class CCSimulator(BaseSimulator):
                 experiment_params=experiment_params,
                 start_timestamp=start_timestamp,
             ),
-            create_silica_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USED),
-            create_sample_cartridge_update(params.work_station_id, params.work_station_id, EntityState.USED),
-            create_tube_rack_update(params.work_station_id, params.work_station_id, EntityState.USED),
+            create_silica_cartridge_update(silica_id, params.work_station_id, EntityState.USED),
+            create_sample_cartridge_update(sample_id, params.work_station_id, EntityState.USED),
+            create_tube_rack_update(tube_rack_id, params.work_station_id, EntityState.USED),
             create_ccs_ext_module_update(params.work_station_id, EntityState.USED),
         ]
 

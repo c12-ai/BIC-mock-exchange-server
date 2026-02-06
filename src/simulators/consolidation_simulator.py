@@ -37,12 +37,16 @@ class ConsolidationSimulator(BaseSimulator):
         base_delay = tubes_to_collect * 3.0 + 10.0
         logger.info("Simulating fraction_consolidation for task {} ({} tubes)", task_id, tubes_to_collect)
 
+        # Resolve material IDs from WorldState
+        tube_rack_id = self._resolve_entity_id("tube_rack", params.work_station_id)
+        flask_id = self._resolve_entity_id("round_bottom_flask", params.work_station_id)
+
         # Log: robot pulling out tube rack
         await self._publish_log(
             task_id,
             [
                 create_robot_update(self.robot_id, params.work_station_id, "pulling_out_tube_rack"),
-                create_tube_rack_update(params.work_station_id, params.work_station_id, "used,pulled_out"),
+                create_tube_rack_update(tube_rack_id, params.work_station_id, "used,pulled_out"),
             ],
             "robot pulling out tube rack",
         )
@@ -51,12 +55,8 @@ class ConsolidationSimulator(BaseSimulator):
 
         updates = [
             create_robot_update(self.robot_id, params.work_station_id, RobotState.MOVING_WITH_FLASK),
-            create_tube_rack_update(
-                params.work_station_id, params.work_station_id, "used,pulled_out,ready_for_recovery"
-            ),
-            create_round_bottom_flask_update(
-                params.work_station_id, params.work_station_id, "used,ready_for_evaporate"
-            ),
+            create_tube_rack_update(tube_rack_id, params.work_station_id, "used,pulled_out,ready_for_recovery"),
+            create_round_bottom_flask_update(flask_id, params.work_station_id, "used,ready_for_evaporate"),
             create_pcc_left_chute_update(params.work_station_id),
             create_pcc_right_chute_update(params.work_station_id),
         ]
