@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import aio_pika
 from loguru import logger
+
+from src.generators.entity_updates import generate_robot_timestamp
 
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractExchange
@@ -35,9 +36,7 @@ class LogProducer:
         )
         logger.info("LogProducer initialized, exchange: {}", self._settings.mq_exchange)
 
-    async def publish_log(
-        self, task_id: str, updates: Sequence[EntityUpdate], msg: str = "state_update"
-    ) -> None:
+    async def publish_log(self, task_id: str, updates: Sequence[EntityUpdate], msg: str = "state_update") -> None:
         """Publish a log message with entity state updates to {robot_id}.log."""
         from src.schemas.results import LogMessage
 
@@ -48,7 +47,7 @@ class LogProducer:
             task_id=task_id,
             updates=list(updates),
             msg=msg,
-            timestamp=datetime.now(tz=UTC).isoformat(),
+            timestamp=generate_robot_timestamp(),
         )
 
         routing_key = f"{self._settings.robot_id}.log"

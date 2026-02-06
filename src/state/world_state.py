@@ -81,9 +81,7 @@ class WorldState:
         """
         with self._lock:
             return {
-                entity_id: props.copy()
-                for (etype, entity_id), props in self._entities.items()
-                if etype == entity_type
+                entity_id: props.copy() for (etype, entity_id), props in self._entities.items() if etype == entity_type
             }
 
     def get_robot_state(self, robot_id: str) -> dict[str, Any] | None:

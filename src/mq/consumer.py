@@ -147,7 +147,12 @@ class CommandConsumer:
         # Bind queue to exchange via routing key
         await self._queue.bind(exchange, routing_key=routing_key)
 
-        logger.info("Consumer initialized, queue '{}' bound to exchange '{}' via '{}'", queue_name, self._settings.mq_exchange, routing_key)
+        logger.info(
+            "Consumer initialized, queue '{}' bound to exchange '{}' via '{}'",
+            queue_name,
+            self._settings.mq_exchange,
+            routing_key,
+        )
 
     async def start_consuming(self) -> None:
         """Begin consuming messages from the queue."""
@@ -170,23 +175,14 @@ class CommandConsumer:
         """Core routing logic: parse command, apply scenarios, dispatch to simulator."""
         async with message.process(requeue=False):
             try:
+                # Log raw message for debugging
+                logger.debug("Raw message body (first 500 chars): {}", message.body[:500])
                 raw = json.loads(message.body)
-                command = RobotCommand.model_validate(raw)
-            except json.JSONDecodeError:
-                logger.error("Failed to decode message body as JSON: {}", message.body[:200])
-                return
-            except ValidationError as exc:
-                logger.error("Invalid RobotCommand envelope: {}", exc)
-                return
+                logger.debug("Parsed JSON structure: {}", json.dumps(raw, indent=2)[:1000])
 
-            task_id = command.task_id
-            task_name = command.task_name
-
-            logger.info("Received command: task_id={}, task_name={}, params={}", task_id, task_name, command.params)
-
-            try:
-                # --- Special command: reset_state ---
-                if task_name == "reset_state":  # type: ignore[comparison-overlap]
+                # Handle special command: reset_state (before Pydantic validation)
+                if raw.get("task_name") == "reset_state":
+                    task_id = raw.get("task_id", "unknown")
                     if self._world_state is not None:
                         self._world_state.reset()
                         logger.info("World state reset via reset_state command")
@@ -199,6 +195,25 @@ class CommandConsumer:
                         )
                     return
 
+                command = RobotCommand.model_validate(raw)
+            except json.JSONDecodeError:
+                logger.error("Failed to decode message body as JSON: {}", message.body[:200])
+                return
+            except ValidationError as exc:
+                logger.error("Invalid RobotCommand envelope: {}", exc)
+                return
+
+            task_id = command.task_id
+            task_name = command.task_name
+
+            logger.info("Received command: task_id={}, task_name={}, params={}", task_id, task_name, command.params)
+            logger.debug(
+                "Params dict keys: {}, Params values sample: {}",
+                list(command.params.keys())[:10],
+                {k: v for i, (k, v) in enumerate(command.params.items()) if i < 3},
+            )
+
+            try:
                 # --- Scenario overrides ---
                 if self._scenario_manager.should_timeout(task_name):
                     logger.warning("Simulating timeout for task {}", task_id)
@@ -253,6 +268,7 @@ class CommandConsumer:
 
             except ValidationError as exc:
                 logger.error("Parameter validation failed for task {}: {}", task_id, exc)
+                logger.error("Raw params that failed validation: {}", json.dumps(command.params, indent=2)[:500])
                 await self._producer.publish_result(
                     RobotResult(code=1001, msg=f"Parameter validation error: {exc}", task_id=task_id)
                 )
