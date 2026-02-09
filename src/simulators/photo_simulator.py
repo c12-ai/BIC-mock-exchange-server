@@ -78,7 +78,7 @@ class PhotoSimulator(BaseSimulator):
             self.image_base_url, params.work_station_id, params.device_id, params.device_type, components
         )
 
-        return RobotResult(code=0, msg="take_photo completed", task_id=task_id, updates=updates, images=images)
+        return RobotResult(code=200, msg="take_photo completed", task_id=task_id, updates=updates, images=images)
 
     def _get_device_update(self, device_id: str, device_type: str) -> EntityUpdate | None:
         """Retrieve device state from world_state and create appropriate update.

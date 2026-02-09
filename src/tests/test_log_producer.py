@@ -18,10 +18,10 @@ class TestLogMessage:
     """Tests for the LogMessage Pydantic model."""
 
     def test_log_message_defaults(self) -> None:
-        """Default code=-1 and msg='state_update' are set."""
+        """Default code=200 and msg='state_update' are set."""
         msg = LogMessage(task_id="task-001", timestamp="2025-01-13T01:17:25.312Z")
 
-        assert msg.code == -1
+        assert msg.code == 200
         assert msg.msg == "state_update"
         assert msg.task_id == "task-001"
         assert msg.updates == []
@@ -58,7 +58,7 @@ class TestLogMessage:
         json_str = msg.model_dump_json()
         restored = LogMessage.model_validate_json(json_str)
 
-        assert restored.code == -1
+        assert restored.code == 200
         assert restored.msg == "state_update"
         assert restored.task_id == "task-003"
         assert restored.timestamp == "2025-01-13T03:00:00.000Z"
@@ -76,14 +76,14 @@ class TestLogMessage:
         parsed = json.loads(msg.model_dump_json())
 
         assert set(parsed.keys()) == {"code", "msg", "task_id", "updates", "timestamp"}
-        assert parsed["code"] == -1
+        assert parsed["code"] == 200
         assert parsed["msg"] == "state_update"
 
     def test_log_message_custom_code(self) -> None:
-        """Code can be overridden from default -1."""
-        msg = LogMessage(code=0, task_id="task-005", timestamp="2025-01-13T05:00:00.000Z")
+        """Code can be overridden from default 200."""
+        msg = LogMessage(code=500, task_id="task-005", timestamp="2025-01-13T05:00:00.000Z")
 
-        assert msg.code == 0
+        assert msg.code == 500
 
 
 class TestLogProducerConstruction:

@@ -138,7 +138,7 @@ class TestResultSchemas:
     def test_robot_result_serialization(self) -> None:
         """model_dump_json roundtrip preserves data."""
         result = RobotResult(
-            code=0,
+            code=200,
             msg="Success",
             task_id="task-001",
             updates=[],
@@ -146,14 +146,14 @@ class TestResultSchemas:
         json_str = result.model_dump_json()
         restored = RobotResult.model_validate_json(json_str)
 
-        assert restored.code == 0
+        assert restored.code == 200
         assert restored.msg == "Success"
         assert restored.task_id == "task-001"
         assert restored.updates == []
 
     def test_robot_result_is_success(self) -> None:
-        """code=0 -> True, code=1 -> False."""
-        success = RobotResult(code=0, msg="OK", task_id="t-1", updates=[])
+        """code=200 -> True, code=1 -> False."""
+        success = RobotResult(code=200, msg="OK", task_id="t-1", updates=[])
         failure = RobotResult(code=1, msg="Error", task_id="t-2", updates=[])
 
         assert success.is_success() is True
@@ -184,7 +184,7 @@ class TestResultSchemas:
             properties=RobotProperties(location="ws-1", state="idle"),
         )
         result = RobotResult(
-            code=0,
+            code=200,
             msg="Task completed",
             task_id="task-001",
             updates=[robot_update],

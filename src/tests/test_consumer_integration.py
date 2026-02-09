@@ -56,7 +56,6 @@ def mock_producer():
     """Mock ResultProducer that captures published results."""
     producer = AsyncMock()
     producer.publish_result = AsyncMock()
-    producer.publish_intermediate_update = AsyncMock()
     return producer
 
 
@@ -138,7 +137,7 @@ class TestConsumerIntegration:
         # Verify result was published
         mock_producer.publish_result.assert_called_once()
         result = mock_producer.publish_result.call_args[0][0]
-        assert result.code == 0
+        assert result.code == 200
         assert result.task_id == "task-001"
         assert result.msg == "setup_tube_rack completed"
         assert len(result.updates) > 0
@@ -226,7 +225,7 @@ class TestConsumerIntegration:
 
         # First should succeed
         result1 = mock_producer.publish_result.call_args[0][0]
-        assert result1.code == 0
+        assert result1.code == 200
 
         mock_producer.reset_mock()
 
@@ -281,7 +280,7 @@ class TestConsumerIntegration:
         mock_producer.publish_result.assert_called_once()
         result = mock_producer.publish_result.call_args[0][0]
         assert result.task_id == "task-001"
-        assert result.code != 0  # Should be a failure code (1020-1029 for setup_tube_rack)
+        assert result.code != 200  # Should be a failure code (1020-1029 for setup_tube_rack)
         assert 1020 <= result.code <= 1029
 
     @pytest.mark.asyncio

@@ -193,13 +193,13 @@ class RobotResult(BaseModel):
 
     def is_success(self) -> bool:
         """Check if the result indicates success."""
-        return self.code == 0
+        return self.code == 200
 
 
 class LogMessage(BaseModel):
     """Log message published to {robot_id}.log during skill execution."""
 
-    code: int = -1
+    code: int = 200
     msg: str = "state_update"
     task_id: str
     updates: list[EntityUpdate] = Field(default_factory=list)

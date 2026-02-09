@@ -89,7 +89,7 @@ class CleanupSimulator(BaseSimulator):
         ]
         await self._publish_log(task_id, updates, "evaporation stopped")
 
-        return RobotResult(code=0, msg="stop_evaporation completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="stop_evaporation completed", task_id=task_id, updates=updates)
 
     async def _simulate_setup_ccs_bins(self, task_id: str, params: SetupCCSBinsParams) -> RobotResult:
         """Simulate setup_ccs_bins: 10-20s delay."""
@@ -122,7 +122,7 @@ class CleanupSimulator(BaseSimulator):
         ]
         await self._publish_log(task_id, updates, "bins placed in chutes")
 
-        return RobotResult(code=0, msg="setup_ccs_bins completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="setup_ccs_bins completed", task_id=task_id, updates=updates)
 
     async def _simulate_return_ccs_bins(self, task_id: str, params: ReturnCCSBinsParams) -> RobotResult:
         """Simulate return_ccs_bins: 10-20s delay."""
@@ -161,7 +161,7 @@ class CleanupSimulator(BaseSimulator):
         ]
         await self._publish_log(task_id, updates, "bins returned to waste area")
 
-        return RobotResult(code=0, msg="return_ccs_bins completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="return_ccs_bins completed", task_id=task_id, updates=updates)
 
     async def _simulate_return_cartridges(self, task_id: str, params: ReturnCartridgesParams) -> RobotResult:
         """Simulate return_cartridges: 10-20s delay."""
@@ -187,7 +187,7 @@ class CleanupSimulator(BaseSimulator):
         ]
         await self._publish_log(task_id, updates, "cartridges returned to waste area")
 
-        return RobotResult(code=0, msg="return_cartridges completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="return_cartridges completed", task_id=task_id, updates=updates)
 
     async def _simulate_return_tube_rack(self, task_id: str, params: ReturnTubeRackParams) -> RobotResult:
         """Simulate return_tube_rack: 10-20s delay."""
@@ -211,4 +211,4 @@ class CleanupSimulator(BaseSimulator):
         ]
         await self._publish_log(task_id, updates, "tube rack returned to waste area")
 
-        return RobotResult(code=0, msg="return_tube_rack completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="return_tube_rack completed", task_id=task_id, updates=updates)

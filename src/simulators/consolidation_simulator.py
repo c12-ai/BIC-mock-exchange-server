@@ -64,4 +64,4 @@ class ConsolidationSimulator(BaseSimulator):
         # Log: consolidation complete
         await self._publish_log(task_id, updates, "consolidation complete")
 
-        return RobotResult(code=0, msg="fraction_consolidation completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="fraction_consolidation completed", task_id=task_id, updates=updates)

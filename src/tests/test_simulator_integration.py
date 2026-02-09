@@ -42,7 +42,6 @@ def mock_producer():
     """Mock ResultProducer."""
     producer = AsyncMock()
     producer.publish_result = AsyncMock()
-    producer.publish_intermediate_update = AsyncMock()
     return producer
 
 
@@ -93,7 +92,7 @@ class TestSetupSimulatorIntegration:
         )
         result = await setup_simulator.simulate("task-002", TaskName.SETUP_TUBE_RACK, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "setup_tube_rack completed"
         assert result.task_id == "task-002"
 
@@ -117,7 +116,7 @@ class TestSetupSimulatorIntegration:
         )
         result = await setup_simulator.simulate("task-003", TaskName.COLLAPSE_CARTRIDGES, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "collapse_cartridges completed"
         assert result.task_id == "task-003"
 
@@ -143,7 +142,7 @@ class TestCCSimulatorIntegration:
         )
         result = await cc_simulator.simulate("task-006", TaskName.TERMINATE_CC, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "terminate_column_chromatography completed"
         assert result.task_id == "task-006"
 
@@ -170,7 +169,7 @@ class TestCleanupSimulatorIntegration:
         )
         result = await cleanup_simulator.simulate("task-009", TaskName.STOP_EVAPORATION, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "stop_evaporation completed"
         assert result.task_id == "task-009"
 
@@ -189,7 +188,7 @@ class TestCleanupSimulatorIntegration:
         )
         result = await cleanup_simulator.simulate("task-010", TaskName.SETUP_CCS_BINS, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "setup_ccs_bins completed"
         assert result.task_id == "task-010"
 
@@ -208,7 +207,7 @@ class TestCleanupSimulatorIntegration:
         )
         result = await cleanup_simulator.simulate("task-011", TaskName.RETURN_CCS_BINS, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "return_ccs_bins completed"
         assert result.task_id == "task-011"
 
@@ -229,7 +228,7 @@ class TestCleanupSimulatorIntegration:
         )
         result = await cleanup_simulator.simulate("task-012", TaskName.RETURN_CARTRIDGES, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "return_cartridges completed"
         assert result.task_id == "task-012"
 
@@ -249,7 +248,7 @@ class TestCleanupSimulatorIntegration:
         )
         result = await cleanup_simulator.simulate("task-013", TaskName.RETURN_TUBE_RACK, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "return_tube_rack completed"
         assert result.task_id == "task-013"
 
