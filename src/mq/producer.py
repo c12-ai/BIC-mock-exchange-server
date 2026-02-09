@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 import aio_pika
@@ -13,7 +12,7 @@ if TYPE_CHECKING:
 
     from src.config import MockSettings
     from src.mq.connection import MQConnection
-    from src.schemas.results import EntityUpdate, RobotResult
+    from src.schemas.results import RobotResult
 
 
 class ResultProducer:
@@ -59,37 +58,3 @@ class ResultProducer:
             result.model_dump_json(indent=2),
         )
 
-    async def publish_intermediate_update(self, task_id: str, updates: Sequence[EntityUpdate]) -> None:
-        """Publish an intermediate entity-update message via the log channel.
-
-        Intermediate updates are state changes that occur during long-running tasks
-        (e.g., CC running, evaporation progress). They should be published to the
-        log channel ({robot_id}.log), NOT the result channel, so the lab service
-        processes them as real-time state updates without affecting task completion status.
-        """
-        from src.schemas.results import LogMessage as _LogMessage
-
-        if self._exchange is None:
-            raise RuntimeError("Producer not initialized. Call initialize() first.")
-
-        from src.generators.entity_updates import generate_robot_timestamp
-
-        log_msg = _LogMessage(
-            task_id=task_id,
-            updates=list(updates),
-            timestamp=generate_robot_timestamp(),
-        )
-
-        routing_key = f"{self._settings.robot_id}.log"
-        body = log_msg.model_dump_json().encode()
-
-        await self._exchange.publish(
-            aio_pika.Message(
-                body=body,
-                content_type="application/json",
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            ),
-            routing_key=routing_key,
-        )
-
-        logger.debug("Published intermediate update via log channel for task {}", task_id)

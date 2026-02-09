@@ -94,8 +94,6 @@ class CCSimulator(BaseSimulator):
             create_sample_cartridge_update(sample_id, params.work_station_id, EntityState.USING),
             create_tube_rack_update(tube_rack_id, params.work_station_id, EntityState.USING),
         ]
-        await self._producer.publish_intermediate_update(task_id, initial_updates)
-
         # Log: CC process started with all initial state changes
         await self._publish_log(task_id, initial_updates, "CC process started")
 
@@ -114,7 +112,6 @@ class CCSimulator(BaseSimulator):
                 progress_updates: list[EntityUpdate] = [
                     create_cc_system_update(params.device_id, EntityState.RUNNING),
                 ]
-                await self._producer.publish_intermediate_update(task_id, progress_updates)
                 await self._publish_log(task_id, progress_updates, "CC in progress")
                 logger.debug("CC progress for task {}: {:.0f}/{:.0f}s", task_id, elapsed, total_duration)
 
@@ -124,7 +121,7 @@ class CCSimulator(BaseSimulator):
             create_cc_system_update(params.device_id, EntityState.RUNNING),
         ]
         logger.info("CC simulation complete for task {} ({:.0f}s)", task_id, total_duration)
-        return RobotResult(code=0, msg="start_column_chromatography completed", task_id=task_id, updates=final_updates)
+        return RobotResult(code=200, msg="start_column_chromatography completed", task_id=task_id, updates=final_updates)
 
     # ------------------------------------------------------------------
     # terminate_column_chromatography — QUICK
@@ -196,5 +193,5 @@ class CCSimulator(BaseSimulator):
         )
 
         return RobotResult(
-            code=0, msg="terminate_column_chromatography completed", task_id=task_id, updates=updates, images=images
+            code=200, msg="terminate_column_chromatography completed", task_id=task_id, updates=updates, images=images
         )

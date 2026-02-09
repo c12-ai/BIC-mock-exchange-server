@@ -187,7 +187,7 @@ class CommandConsumer:
                         self._world_state.reset()
                         logger.info("World state reset via reset_state command")
                         await self._producer.publish_result(
-                            RobotResult(code=0, msg="World state reset", task_id=task_id)
+                            RobotResult(code=200, msg="World state reset", task_id=task_id)
                         )
                     else:
                         await self._producer.publish_result(

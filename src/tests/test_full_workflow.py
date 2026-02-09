@@ -136,13 +136,13 @@ class TestMultiRobotScenarios:
 
         producer1 = AsyncMock()
         producer1.publish_result = AsyncMock()
-        producer1.publish_intermediate_update = AsyncMock()
+
         log_producer1 = AsyncMock()
         log_producer1.publish_log = AsyncMock()
 
         producer2 = AsyncMock()
         producer2.publish_result = AsyncMock()
-        producer2.publish_intermediate_update = AsyncMock()
+
         log_producer2 = AsyncMock()
         log_producer2.publish_log = AsyncMock()
 
@@ -182,12 +182,12 @@ class TestMultiRobotScenarios:
 
         # Verify robot 1 results
         result1 = producer1.publish_result.call_args[0][0]
-        assert result1.code == 0
+        assert result1.code == 200
         assert result1.task_id == "task-r1-001"
 
         # Verify robot 2 results
         result2 = producer2.publish_result.call_args[0][0]
-        assert result2.code == 0
+        assert result2.code == 200
         assert result2.task_id == "task-r2-001"
 
         # Robot 1 world state has ext_module but not tube_rack from robot 2
@@ -221,7 +221,6 @@ class TestMultiRobotScenarios:
         # Additionally verify that simulators receive the correct robot_id
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -259,7 +258,6 @@ class TestFullBICWorkflow:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -285,7 +283,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"setup_cartridges failed: {result.msg}"
+        assert result.code == 200, f"setup_cartridges failed: {result.msg}"
         assert world_state.has_entity("ccs_ext_module", ws_id)
         assert world_state.has_entity("silica_cartridge", "sc-001")
         assert world_state.has_entity("sample_cartridge", "samp-001")
@@ -303,7 +301,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"setup_tube_rack failed: {result.msg}"
+        assert result.code == 200, f"setup_tube_rack failed: {result.msg}"
         assert world_state.has_entity("tube_rack", "rack-loc-1")
 
         # -- 3. setup_ccs_bins --------------------------------------------------
@@ -319,7 +317,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"setup_ccs_bins failed: {result.msg}"
+        assert result.code == 200, f"setup_ccs_bins failed: {result.msg}"
         assert world_state.has_entity("pcc_left_chute", ws_id)
         assert world_state.has_entity("pcc_right_chute", ws_id)
 
@@ -338,7 +336,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"take_photo failed: {result.msg}"
+        assert result.code == 200, f"take_photo failed: {result.msg}"
         assert result.images is not None and len(result.images) > 0
 
         # -- 5. terminate_cc ----------------------------------------------------
@@ -380,7 +378,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"terminate_cc failed: {result.msg}"
+        assert result.code == 200, f"terminate_cc failed: {result.msg}"
         # After terminate_cc: CC system -> terminated, cartridges sc-ws-1/sac-ws-1 -> used
         cc = world_state.get_entity("column_chromatography_system", "cc-device-1")
         assert cc is not None
@@ -410,7 +408,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"collapse_cartridges failed: {result.msg}"
+        assert result.code == 200, f"collapse_cartridges failed: {result.msg}"
 
         # -- 7. fraction_consolidation ------------------------------------------
         # Precondition: tube_rack tr-{ws_id} must be "used" or "using".
@@ -429,7 +427,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"fraction_consolidation failed: {result.msg}"
+        assert result.code == 200, f"fraction_consolidation failed: {result.msg}"
 
         # -- 8. return_ccs_bins -------------------------------------------------
         # Precondition: bins exist in chutes. But fraction_consolidation may have
@@ -470,7 +468,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"return_ccs_bins failed: {result.msg}"
+        assert result.code == 200, f"return_ccs_bins failed: {result.msg}"
 
         # -- 9. return_cartridges -----------------------------------------------
         # Precondition: cartridges must exist with "used" state after collapse.
@@ -488,7 +486,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"return_cartridges failed: {result.msg}"
+        assert result.code == 200, f"return_cartridges failed: {result.msg}"
 
         # Verify cartridges are now returned
         silica_final = world_state.get_entity("silica_cartridge", "sc-001")
@@ -510,7 +508,7 @@ class TestFullBICWorkflow:
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"return_tube_rack failed: {result.msg}"
+        assert result.code == 200, f"return_tube_rack failed: {result.msg}"
 
         # Verify tube rack returned
         rack_final = world_state.get_entity("tube_rack", "rack-loc-1")
@@ -537,7 +535,6 @@ class TestLogStreamDuringExecution:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -556,7 +553,7 @@ class TestLogStreamDuringExecution:
         )
 
         result = await sim.simulate("task-log-001", TaskName.SETUP_CARTRIDGES, params)
-        assert result.code == 0
+        assert result.code == 200
         # setup_cartridges emits 3 log calls: robot moving, cartridges mounted, robot idle
         assert log_producer.publish_log.call_count >= 1
 
@@ -566,7 +563,6 @@ class TestLogStreamDuringExecution:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -582,7 +578,7 @@ class TestLogStreamDuringExecution:
         )
 
         result = await sim.simulate("task-log-002", TaskName.TERMINATE_CC, params)
-        assert result.code == 0
+        assert result.code == 200
         # terminate_cc emits 2 log calls: robot terminating CC, CC terminated
         assert log_producer.publish_log.call_count >= 1
 
@@ -592,7 +588,6 @@ class TestLogStreamDuringExecution:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -608,7 +603,7 @@ class TestLogStreamDuringExecution:
         )
 
         result = await sim.simulate("task-log-003", TaskName.STOP_EVAPORATION, params)
-        assert result.code == 0
+        assert result.code == 200
         # stop_evaporation emits 2 log calls: robot moving, evaporation stopped
         assert log_producer.publish_log.call_count >= 1
 
@@ -627,7 +622,6 @@ class TestResetStateViaCommand:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -651,7 +645,7 @@ class TestResetStateViaCommand:
         await consumer._process_message(msg)
 
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0
+        assert result.code == 200
         assert world_state.has_entity("ccs_ext_module", "ws-1")
         assert world_state.has_entity("silica_cartridge", "sc-001")
 
@@ -661,7 +655,7 @@ class TestResetStateViaCommand:
         await consumer._process_message(msg)
 
         reset_result = producer.publish_result.call_args[0][0]
-        assert reset_result.code == 0
+        assert reset_result.code == 200
         assert reset_result.task_id == "task-reset-001"
         assert "reset" in reset_result.msg.lower()
 
@@ -677,7 +671,6 @@ class TestResetStateViaCommand:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
 
         mock_connection = AsyncMock()
         scenario_manager = ScenarioManager(settings)
@@ -708,7 +701,6 @@ class TestCCExperimentContextPersistence:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -756,11 +748,22 @@ class TestCCExperimentContextPersistence:
 
         await asyncio.sleep(0.2)
 
-        # Verify start_cc intermediate updates were published
-        assert producer.publish_intermediate_update.call_count > 0, (
-            "start_cc should have published intermediate updates"
+        # Verify start_cc intermediate updates were published via log producer
+        assert log_producer.publish_log.call_count > 0, (
+            "start_cc should have published intermediate log updates"
         )
-        initial_updates = producer.publish_intermediate_update.call_args_list[0][0][1]
+        # publish_log is called with (task_id, updates, msg) — second log call is "CC process started"
+        # Find the log call that contains CC system updates
+        initial_updates = None
+        for call in log_producer.publish_log.call_args_list:
+            updates_arg = call[0][1]  # second positional arg is updates list
+            for update in updates_arg:
+                if isinstance(update, CCSystemUpdate):
+                    initial_updates = updates_arg
+                    break
+            if initial_updates is not None:
+                break
+        assert initial_updates is not None, "start_cc should have published a CC system update via log"
 
         # Find CC system update from start_cc
         cc_update_from_start = None
@@ -804,7 +807,7 @@ class TestCCExperimentContextPersistence:
         assert producer.publish_result.call_count == 1
         result = producer.publish_result.call_args[0][0]
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.task_id == "task-terminate-cc"
 
         # Find CC system update from terminate_cc
@@ -838,7 +841,6 @@ class TestCCExperimentContextPersistence:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -879,7 +881,7 @@ class TestCCExperimentContextPersistence:
         assert producer.publish_result.call_count == 1
         result = producer.publish_result.call_args[0][0]
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.task_id == "task-terminate-cc-no-context"
 
         # Find CC system update

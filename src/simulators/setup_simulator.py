@@ -71,7 +71,7 @@ class SetupSimulator(BaseSimulator):
             create_sample_cartridge_update(params.sample_cartridge_id, params.work_station_id, EntityState.MOUNTED),
             create_ccs_ext_module_update(params.work_station_id, EntityState.USING),
         ]
-        return RobotResult(code=0, msg="setup_cartridges completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="setup_cartridges completed", task_id=task_id, updates=updates)
 
     async def _simulate_setup_tube_rack(self, task_id: str, params: SetupTubeRackParams) -> RobotResult:
         """Simulate setup_tube_rack: 10-20s delay."""
@@ -101,7 +101,7 @@ class SetupSimulator(BaseSimulator):
             create_robot_update(self.robot_id, params.work_station_id, params.end_state),
             create_tube_rack_update(params.tube_rack_location_id, params.work_station_id, EntityState.MOUNTED),
         ]
-        return RobotResult(code=0, msg="setup_tube_rack completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="setup_tube_rack completed", task_id=task_id, updates=updates)
 
     async def _simulate_collapse_cartridges(self, task_id: str, params: CollapseCartridgesParams) -> RobotResult:
         """Simulate collapse_cartridges: 10-15s delay."""
@@ -114,4 +114,4 @@ class SetupSimulator(BaseSimulator):
             create_sample_cartridge_update(params.sample_cartridge_id, params.work_station_id, EntityState.USED),
             create_ccs_ext_module_update(params.work_station_id, EntityState.USED),
         ]
-        return RobotResult(code=0, msg="collapse_cartridges completed", task_id=task_id, updates=updates)
+        return RobotResult(code=200, msg="collapse_cartridges completed", task_id=task_id, updates=updates)

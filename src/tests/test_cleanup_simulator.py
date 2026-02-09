@@ -112,7 +112,7 @@ class TestCleanupSimulator:
 
     @pytest.mark.asyncio
     async def test_stop_evaporation(self, cleanup_simulator: CleanupSimulator) -> None:
-        """stop_evaporation returns code=0 with evaporator and flask updates."""
+        """stop_evaporation returns code=200 with evaporator and flask updates."""
         params = StopEvaporationParams(
             work_station_id="ws-1",
             device_id="evap-001",
@@ -120,7 +120,7 @@ class TestCleanupSimulator:
         )
         result = await cleanup_simulator.simulate("task-100", TaskName.STOP_EVAPORATION, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "stop_evaporation completed"
         assert result.task_id == "task-100"
 
@@ -136,14 +136,14 @@ class TestCleanupSimulator:
 
     @pytest.mark.asyncio
     async def test_setup_ccs_bins(self, cleanup_simulator: CleanupSimulator) -> None:
-        """setup_ccs_bins returns code=0 with chute updates."""
+        """setup_ccs_bins returns code=200 with chute updates."""
         params = SetupCCSBinsParams(
             work_station_id="ws-1",
             bin_location_ids=["loc-A", "loc-B"],
         )
         result = await cleanup_simulator.simulate("task-101", TaskName.SETUP_CCS_BINS, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "setup_ccs_bins completed"
 
         update_types = {type(u) for u in result.updates}
@@ -153,14 +153,14 @@ class TestCleanupSimulator:
 
     @pytest.mark.asyncio
     async def test_return_ccs_bins(self, cleanup_simulator: CleanupSimulator) -> None:
-        """return_ccs_bins returns code=0 with cleared chute updates."""
+        """return_ccs_bins returns code=200 with cleared chute updates."""
         params = ReturnCCSBinsParams(
             work_station_id="ws-1",
             waste_area_id="waste-01",
         )
         result = await cleanup_simulator.simulate("task-102", TaskName.RETURN_CCS_BINS, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "return_ccs_bins completed"
 
         # Verify chutes are cleared
@@ -176,7 +176,7 @@ class TestCleanupSimulator:
 
     @pytest.mark.asyncio
     async def test_return_cartridges(self, cleanup_simulator: CleanupSimulator) -> None:
-        """return_cartridges returns code=0 with cartridge and ext module updates."""
+        """return_cartridges returns code=200 with cartridge and ext module updates."""
         params = ReturnCartridgesParams(
             work_station_id="ws-1",
             silica_cartridge_id="sc-001",
@@ -185,7 +185,7 @@ class TestCleanupSimulator:
         )
         result = await cleanup_simulator.simulate("task-103", TaskName.RETURN_CARTRIDGES, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "return_cartridges completed"
 
         update_types = {type(u) for u in result.updates}
@@ -204,7 +204,7 @@ class TestCleanupSimulator:
 
     @pytest.mark.asyncio
     async def test_return_tube_rack(self, cleanup_simulator: CleanupSimulator) -> None:
-        """return_tube_rack returns code=0 with tube rack update."""
+        """return_tube_rack returns code=200 with tube rack update."""
         params = ReturnTubeRackParams(
             work_station_id="ws-1",
             tube_rack_id="rack-001",
@@ -212,7 +212,7 @@ class TestCleanupSimulator:
         )
         result = await cleanup_simulator.simulate("task-104", TaskName.RETURN_TUBE_RACK, params)
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.msg == "return_tube_rack completed"
 
         update_types = {type(u) for u in result.updates}

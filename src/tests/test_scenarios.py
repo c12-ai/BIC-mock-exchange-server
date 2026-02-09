@@ -59,7 +59,7 @@ class TestScenarioManager:
         manager = ScenarioManager(mock_settings)
         result = manager.get_failure_result("task-123", TaskName.START_CC)
 
-        assert result.code > 0
+        assert result.code != 200
         assert result.msg != ""
         assert result.task_id == "task-123"
         assert result.updates == []

@@ -76,8 +76,6 @@ class EvaporationSimulator(BaseSimulator):
             ),
             create_round_bottom_flask_update(flask_id, params.work_station_id, "used,evaporating"),
         ]
-        await self._producer.publish_intermediate_update(task_id, initial_updates)
-
         # Log: evaporation started with initial sensor values
         await self._publish_log(task_id, initial_updates, "evaporation started")
 
@@ -111,7 +109,6 @@ class EvaporationSimulator(BaseSimulator):
                         current_pressure=round(current_pressure, 1),
                     ),
                 ]
-                await self._producer.publish_intermediate_update(task_id, ramp_updates)
                 await self._publish_log(task_id, ramp_updates, "evaporation ramp in progress")
                 logger.debug(
                     "Evaporation progress task {}: {:.0f}/{:.0f}s, temp={:.1f}/{:.1f}, pressure={:.1f}/{:.1f}",
@@ -139,4 +136,4 @@ class EvaporationSimulator(BaseSimulator):
             ),
         ]
         logger.info("Evaporation simulation complete for task {} ({:.0f}s)", task_id, total_duration)
-        return RobotResult(code=0, msg="start_evaporation completed", task_id=task_id, updates=final_updates)
+        return RobotResult(code=200, msg="start_evaporation completed", task_id=task_id, updates=final_updates)
