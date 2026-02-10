@@ -12,6 +12,7 @@ from src.schemas.protocol import (
     BinState,
     CCExperimentParams,
     CollapseCartridgesParams,
+    EntityState,
     EquipmentState,
     EvaporationProfile,
     EvaporationProfiles,
@@ -30,7 +31,6 @@ from src.schemas.protocol import (
     StopEvaporationParams,
     TakePhotoParams,
     TaskName,
-    TerminateCCExperimentParams,
     TerminateCCParams,
 )
 
@@ -39,8 +39,8 @@ __all__ = [
     # Enums
     "TaskName",
     "RobotState",
-    "EquipmentState",
     "EntityState",
+    "EquipmentState",
     "PeakGatheringMode",
     "BinState",
     # Command wrapper
@@ -52,7 +52,6 @@ __all__ = [
     "TakePhotoParams",
     "CCExperimentParams",
     "StartCCParams",
-    "TerminateCCExperimentParams",
     "TerminateCCParams",
     "FractionConsolidationParams",
     "EvaporationTrigger",
@@ -65,9 +64,6 @@ __all__ = [
     "ReturnCartridgesParams",
     "ReturnTubeRackParams",
 ]
-
-# EntityState alias for backwards compatibility
-EntityState = EquipmentState
 
 
 # --- Command Wrapper ---

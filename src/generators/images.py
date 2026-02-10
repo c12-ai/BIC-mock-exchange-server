@@ -32,7 +32,6 @@ def generate_captured_images(
             device_type=device_type,
             component=component,
             url=generate_image_url(base_url, work_station_id, device_id, component),
-            create_time=generate_robot_timestamp(),
         )
         for component in components
     ]

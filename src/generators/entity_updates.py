@@ -79,9 +79,12 @@ def create_cc_system_update(
     state: str,
     experiment_params: dict | None = None,
     start_timestamp: str | None = None,
+    *,
+    device_type: str = "column_chromatography_system",
 ) -> CCSystemUpdate:
     """Create a CC system state update with optional experiment params."""
     return CCSystemUpdate(
+        type=device_type,
         id=system_id,
         properties=CCSystemProperties(
             state=state,

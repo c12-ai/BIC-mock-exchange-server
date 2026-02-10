@@ -48,7 +48,13 @@ class TestPhotoDeviceStateUpdate:
         cc_update = create_cc_system_update(
             system_id="combiflash_001",
             state="running",
-            experiment_params={"silicone_column": "40g", "peak_gathering_mode": "peak"},
+            experiment_params={
+                "silicone_column": "40g",
+                "peak_gathering_mode": "peak",
+                "air_clean_minutes": 5,
+                "run_minutes": 30,
+                "need_equilibration": True,
+            },
             start_timestamp="2024-01-01T12:00:00Z",
         )
         world_state.apply_updates([cc_update])
@@ -75,10 +81,8 @@ class TestPhotoDeviceStateUpdate:
         assert device_update.type == "column_chromatography_system"
         assert device_update.id == "combiflash_001"
         assert device_update.properties.state == "running"
-        assert device_update.properties.experiment_params == {
-            "silicone_column": "40g",
-            "peak_gathering_mode": "peak",
-        }
+        assert device_update.properties.experiment_params is not None
+        assert device_update.properties.experiment_params.silicone_column == "40g"
         assert device_update.properties.start_timestamp == "2024-01-01T12:00:00Z"
 
     @pytest.mark.asyncio
@@ -192,7 +196,7 @@ class TestPhotoDeviceStateUpdate:
         # Setup: Add CC system to world_state
         cc_update = create_cc_system_update(
             system_id="cc_system_001",
-            state="idle",
+            state="available",
             experiment_params=None,
             start_timestamp=None,
         )

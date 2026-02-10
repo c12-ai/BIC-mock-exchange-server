@@ -51,11 +51,9 @@ class TestPhotoIntegrationWorkflow:
             experiment_params={
                 "silicone_column": "40g",
                 "peak_gathering_mode": "peak",
-                "air_purge_minutes": 5.0,
+                "air_clean_minutes": 5,
                 "run_minutes": 30,
                 "need_equilibration": True,
-                "solvent_a": "hexane",
-                "solvent_b": "ethyl_acetate",
             },
             start_timestamp="2024-01-01T10:00:00Z",
         )
@@ -85,7 +83,7 @@ class TestPhotoIntegrationWorkflow:
         assert cc_update.type == "column_chromatography_system"
         assert cc_update.id == "combiflash_001"
         assert cc_update.properties.state == "running"
-        assert cc_update.properties.experiment_params["silicone_column"] == "40g"
+        assert cc_update.properties.experiment_params.silicone_column == "40g"
         assert cc_update.properties.start_timestamp == "2024-01-01T10:00:00Z"
 
         # Verify images were captured
@@ -151,6 +149,9 @@ class TestPhotoIntegrationWorkflow:
             experiment_params={
                 "silicone_column": "40g",
                 "peak_gathering_mode": "peak",
+                "air_clean_minutes": 5,
+                "run_minutes": 30,
+                "need_equilibration": True,
             },
             start_timestamp="2024-01-01T10:00:00Z",
         )

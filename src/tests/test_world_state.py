@@ -195,7 +195,13 @@ def test_apply_updates_with_complex_entities() -> None:
             id="cc-1",
             properties={
                 "state": "running",
-                "experiment_params": {"run_minutes": 30},
+                "experiment_params": {
+                    "silicone_column": "40g",
+                    "peak_gathering_mode": "all",
+                    "air_clean_minutes": 5,
+                    "run_minutes": 30,
+                    "need_equilibration": True,
+                },
                 "start_timestamp": "2025-01-15T10:00:00Z",
             },
         ),

@@ -70,11 +70,9 @@ class TestCommandSchemas:
         exp = CCExperimentParams(
             silicone_column="40g",
             peak_gathering_mode="all",
-            air_purge_minutes=5.0,
+            air_clean_minutes=5,
             run_minutes=30,
             need_equilibration=True,
-            solvent_a="hexane",
-            solvent_b="ethyl_acetate",
             left_rack="16x100",
             right_rack=None,
         )
@@ -110,18 +108,16 @@ class TestCommandSchemas:
                     "time_in_sec": 1800,
                 },
             },
-            "updates": [
-                {
-                    "lower_height": 150.0,
-                    "rpm": 200,
-                    "target_temperature": 50.0,
-                    "target_pressure": 150.0,
-                    "trigger": {
-                        "type": "time_from_start",
-                        "time_in_sec": 600,
-                    },
+            "lower_pressure": {
+                "lower_height": 150.0,
+                "rpm": 200,
+                "target_temperature": 50.0,
+                "target_pressure": 150.0,
+                "trigger": {
+                    "type": "time_from_start",
+                    "time_in_sec": 600,
                 },
-            ],
+            },
         }
         profiles = EvaporationProfiles.model_validate(data)
 
@@ -131,9 +127,8 @@ class TestCommandSchemas:
         assert profiles.stop.trigger is not None
         assert isinstance(profiles.stop.trigger, EvaporationTrigger)
         assert profiles.stop.trigger.time_in_sec == 1800
-        assert profiles.updates is not None
-        assert len(profiles.updates) == 1
-        assert profiles.updates[0].target_pressure == 150.0
+        assert profiles.lower_pressure is not None
+        assert profiles.lower_pressure.target_pressure == 150.0
         assert profiles.reduce_bumping is None
 
 

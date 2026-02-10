@@ -65,5 +65,5 @@ class ConsolidationSimulator(BaseSimulator):
         await self._publish_log(task_id, updates, "consolidation complete")
 
         return RobotResult(
-            code=200, msg="collect_column_chromatography_fractions completed", task_id=task_id, updates=updates
+            code=200, msg="fraction_consolidation completed", task_id=task_id, updates=updates
         )

@@ -416,7 +416,7 @@ class TestFullBICWorkflow:
         producer.reset_mock()
         msg = make_mock_message(
             "task-007",
-            "collect_column_chromatography_fractions",
+            "fraction_consolidation",
             {
                 "work_station_id": ws_id,
                 "device_id": "cc-device-1",
@@ -726,11 +726,9 @@ class TestCCExperimentContextPersistence:
         experiment_params = CCExperimentParams(
             silicone_column="40g",
             peak_gathering_mode="all",
-            air_purge_minutes=5.0,
+            air_clean_minutes=5,
             run_minutes=30,
             need_equilibration=True,
-            solvent_a="hexane",
-            solvent_b="ethyl_acetate",
             left_rack="10-tube",
             right_rack="10-tube",
         )
@@ -854,6 +852,7 @@ class TestCCExperimentContextPersistence:
         world_state.apply_updates(
             [
                 CCSystemUpdate(
+                    type="column_chromatography_system",
                     id="cc-001",
                     properties=CCSystemProperties(
                         state="running",

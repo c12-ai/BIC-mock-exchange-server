@@ -47,7 +47,7 @@ class TaskName(StrEnum):
     TAKE_PHOTO = "take_photo"
     START_CC = "start_column_chromatography"
     TERMINATE_CC = "terminate_column_chromatography"
-    FRACTION_CONSOLIDATION = "collect_column_chromatography_fractions"
+    FRACTION_CONSOLIDATION = "fraction_consolidation"
     START_EVAPORATION = "start_evaporation"
     STOP_EVAPORATION = "stop_evaporation"
     SETUP_CCS_BINS = "setup_ccs_bins"
@@ -56,8 +56,8 @@ class TaskName(StrEnum):
     RETURN_TUBE_RACK = "return_tube_rack"
 
 
-class EquipmentState(StrEnum):
-    """Common equipment states."""
+class EntityState(StrEnum):
+    """Common entity states."""
 
     AVAILABLE = "available"
     MOUNTED = "mounted"
@@ -66,8 +66,14 @@ class EquipmentState(StrEnum):
     RUNNING = "running"
     TERMINATED = "terminated"
     EVAPORATING = "evaporating"
+    # Mock-server extras (not in production ground truth)
+    RETURNED = "returned"
     MAINTENANCE = "maintenance"
     ERROR = "error"
+
+
+# Backward-compatible alias
+EquipmentState = EntityState
 
 
 class BinState(StrEnum):
@@ -78,7 +84,7 @@ class BinState(StrEnum):
     FULL = "full"
 
 
-class PeakGatheringMode:
+class PeakGatheringMode(StrEnum):
     """Peak collection modes for column chromatography."""
 
     ALL = "all"
@@ -134,12 +140,10 @@ class CCExperimentParams(BaseModel):
     """Column chromatography experiment parameters."""
 
     silicone_column: str = Field(..., description="Silica column spec, e.g. '40g'")
-    peak_gathering_mode: str = Field(..., description="all, peak, or none")
-    air_purge_minutes: float = Field(..., ge=0, description="Air purge duration in minutes")
-    run_minutes: int = Field(..., ge=0, description="Total run duration in minutes")
+    peak_gathering_mode: PeakGatheringMode = Field(..., description="all, peak, or none")
+    air_clean_minutes: int = Field(..., description="Air clean duration in minutes")
+    run_minutes: int = Field(..., description="Total run duration in minutes")
     need_equilibration: bool = Field(..., description="Whether column equilibration needed")
-    solvent_a: str = Field(..., description="Solvent A identifier")
-    solvent_b: str = Field(..., description="Solvent B identifier")
     left_rack: str | None = Field(default=None, description="Left tube rack spec")
     right_rack: str | None = Field(default=None, description="Right tube rack spec")
 
@@ -154,19 +158,12 @@ class StartCCParams(BaseModel):
     end_state: RobotState
 
 
-class TerminateCCExperimentParams(BaseModel):
-    """Experiment parameters specific to terminate CC."""
-
-    air_purge_minutes: float = Field(..., ge=0, description="Air purge duration in minutes")
-
-
 class TerminateCCParams(BaseModel):
     """Parameters for terminate_column_chromatography task."""
 
     work_station_id: str
     device_id: str
     device_type: str
-    experiment_params: TerminateCCExperimentParams | None = None
     end_state: RobotState
 
 
@@ -189,17 +186,12 @@ class EvaporationTrigger(BaseModel):
 
 
 class EvaporationProfile(BaseModel):
-    """Evaporation parameter profile.
+    """Evaporation parameter profile."""
 
-    Physical parameters are optional because some profiles (e.g. ``stop``)
-    may only contain a trigger with no physical parameters — per the
-    ``note.md`` specification.
-    """
-
-    lower_height: float | None = Field(default=None, description="Flask lowering height in mm")
-    rpm: int | None = Field(default=None, ge=0, description="Rotation speed in rpm")
-    target_temperature: float | None = Field(default=None, ge=0, le=100, description="Water bath temp in Celsius")
-    target_pressure: float | None = Field(default=None, ge=0, description="Vacuum pressure in mbar")
+    lower_height: float = Field(..., description="Flask lowering height in mm")
+    rpm: int = Field(..., description="Rotation speed in rpm")
+    target_temperature: float = Field(..., description="Water bath temp in Celsius")
+    target_pressure: float = Field(..., description="Vacuum pressure in mbar")
     trigger: EvaporationTrigger | None = None
 
 
@@ -208,7 +200,7 @@ class EvaporationProfiles(BaseModel):
 
     start: EvaporationProfile = Field(..., description="Initial profile (required)")
     stop: EvaporationProfile | None = None
-    updates: list[EvaporationProfile] | None = None
+    lower_pressure: EvaporationProfile | None = None
     reduce_bumping: EvaporationProfile | None = Field(
         default=None,
         description="Anti-bumping safety",
@@ -282,4 +274,27 @@ class CapturedImage(BaseModel):
     device_type: str
     component: str
     url: str
-    create_time: str | None = None
+
+
+# =============================================================================
+# Generic Command Type
+# =============================================================================
+
+
+class TypedRobotCommand[P: BaseModel](BaseModel):
+    """Generic command message with typed params, matching ground truth RobotCommand[P]."""
+
+    task_id: str
+    task_name: TaskName
+    params: P
+
+
+# Concrete command type aliases
+SetupCartridgesCommand = TypedRobotCommand[SetupCartridgesParams]
+SetupTubeRackCommand = TypedRobotCommand[SetupTubeRackParams]
+CollapseCartridgesCommand = TypedRobotCommand[CollapseCartridgesParams]
+TakePhotoCommand = TypedRobotCommand[TakePhotoParams]
+StartCCCommand = TypedRobotCommand[StartCCParams]
+TerminateCCCommand = TypedRobotCommand[TerminateCCParams]
+FractionConsolidationCommand = TypedRobotCommand[FractionConsolidationParams]
+StartEvaporationCommand = TypedRobotCommand[StartEvaporationParams]

@@ -1,7 +1,6 @@
 """Robot result schemas for the mock server.
 
-Mock-friendly versions of production schemas that accept string states for testing.
-Uses relaxed typing while maintaining the same structure as production.
+Aligned with v0.3 ground truth — uses enum types for entity state fields.
 """
 
 from __future__ import annotations
@@ -10,23 +9,31 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from src.schemas.protocol import CapturedImage as CapturedImage  # noqa: PLC0414
+from src.schemas.protocol import (
+    BinState,
+    CCExperimentParams,
+    EntityState,
+    RobotState,
+)
+from src.schemas.protocol import (
+    CapturedImage as CapturedImage,  # noqa: PLC0414
+)
 
-# --- Entity Property Models (Mock-friendly: accepts strings for states) ---
+# --- Entity Property Models ---
 
 
 class RobotProperties(BaseModel):
-    """Properties for robot entity updates. Mock version accepts string states."""
+    """Properties for robot entity updates."""
 
     location: str
-    state: str  # Mock: string instead of RobotState enum
+    state: RobotState
 
 
 class CartridgeProperties(BaseModel):
-    """Properties for silica/sample cartridge entity updates. Mock version accepts string states."""
+    """Properties for silica/sample cartridge entity updates."""
 
     location: str
-    state: str  # Mock: string instead of EquipmentState enum
+    state: EntityState
 
 
 class TubeRackProperties(BaseModel):
@@ -40,20 +47,20 @@ class RoundBottomFlaskProperties(BaseModel):
     """Properties for round bottom flask entity updates."""
 
     location: str
-    state: str | dict  # Simple string or complex RoundBottomFlaskState object
+    state: str  # Compound states like "used,evaporating"
 
 
 class CCSExtModuleProperties(BaseModel):
-    """Properties for CC external module entity updates. Mock version accepts string states."""
+    """Properties for CC external module entity updates."""
 
-    state: str  # Mock: string instead of EquipmentState enum
+    state: EntityState
 
 
 class CCSystemProperties(BaseModel):
-    """Properties for CC system entity updates. Mock version uses dict for params."""
+    """Properties for CC system entity updates."""
 
-    state: str  # Mock: string instead of EquipmentState enum
-    experiment_params: dict | None = None  # Mock: dict instead of CCExperimentParams
+    state: EntityState
+    experiment_params: CCExperimentParams | None = None
     start_timestamp: str | None = None
 
 
@@ -70,13 +77,13 @@ class EvaporatorProperties(BaseModel):
 
 
 class PCCChuteProperties(BaseModel):
-    """Properties for post-column-chromatography chute entity updates. Mock version accepts string bin states."""
+    """Properties for post-column-chromatography chute entity updates."""
 
     pulled_out_mm: float
     pulled_out_rate: float
     closed: bool
-    front_waste_bin: str | None = None  # Mock: string instead of BinState enum
-    back_waste_bin: str | None = None  # Mock: string instead of BinState enum
+    front_waste_bin: BinState | None = None
+    back_waste_bin: BinState | None = None
 
 
 # --- Entity Update Models (Discriminated Union) ---
@@ -133,7 +140,7 @@ class CCSExtModuleUpdate(BaseModel):
 class CCSystemUpdate(BaseModel):
     """Column chromatography system state update."""
 
-    type: Literal["column_chromatography_system"] = "column_chromatography_system"
+    type: Literal["column_chromatography_system", "isco_combiflash_nextgen_300"]
     id: str
     properties: CCSystemProperties
 
@@ -163,7 +170,6 @@ class PCCRightChuteUpdate(BaseModel):
 
 
 # --- Discriminated Union Type ---
-
 EntityUpdate = Annotated[
     RobotUpdate
     | SilicaCartridgeUpdate
@@ -179,11 +185,11 @@ EntityUpdate = Annotated[
 ]
 
 
-# --- Result Message (use mock EntityUpdate type) ---
+# --- Result Message ---
 
 
 class RobotResult(BaseModel):
-    """Result message published to MQ after task simulation. Mock version uses relaxed entity updates."""
+    """Result message published to MQ after task simulation."""
 
     code: int
     msg: str

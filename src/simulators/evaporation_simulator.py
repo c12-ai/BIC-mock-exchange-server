@@ -34,10 +34,10 @@ class EvaporationSimulator(BaseSimulator):
     async def _simulate_start_evaporation(self, task_id: str, params: StartEvaporationParams) -> RobotResult:
         """LONG-RUNNING: Simulate evaporation with temperature/pressure ramp."""
         start_profile = params.profiles.start
-        target_temp = start_profile.target_temperature if start_profile.target_temperature is not None else 25.0
-        target_pressure = start_profile.target_pressure if start_profile.target_pressure is not None else 1013.0
-        lower_height = start_profile.lower_height if start_profile.lower_height is not None else 0.0
-        rpm = start_profile.rpm if start_profile.rpm is not None else 0
+        target_temp = start_profile.target_temperature
+        target_pressure = start_profile.target_pressure
+        lower_height = start_profile.lower_height
+        rpm = start_profile.rpm
 
         logger.info(
             "Simulating start_evaporation for task {} (target_temp={}, target_pressure={})",
@@ -121,24 +121,20 @@ class EvaporationSimulator(BaseSimulator):
                     target_pressure,
                 )
 
-        # 4b. Apply updates profiles if provided (additional profile stages)
-        if params.profiles.updates:
-            for update_profile in params.profiles.updates:
-                if update_profile.target_temperature is not None:
-                    target_temp = update_profile.target_temperature
-                if update_profile.target_pressure is not None:
-                    target_pressure = update_profile.target_pressure
-                if update_profile.lower_height is not None:
-                    lower_height = update_profile.lower_height
-                if update_profile.rpm is not None:
-                    rpm = update_profile.rpm
-                logger.debug(
-                    "Applied update profile: target_temp={}, target_pressure={}, lower_height={}, rpm={}",
-                    target_temp,
-                    target_pressure,
-                    lower_height,
-                    rpm,
-                )
+        # 4b. Apply lower_pressure profile if provided
+        if params.profiles.lower_pressure is not None:
+            lp = params.profiles.lower_pressure
+            target_temp = lp.target_temperature
+            target_pressure = lp.target_pressure
+            lower_height = lp.lower_height
+            rpm = lp.rpm
+            logger.debug(
+                "Applied lower_pressure profile: target_temp={}, target_pressure={}, lower_height={}, rpm={}",
+                target_temp,
+                target_pressure,
+                lower_height,
+                rpm,
+            )
 
         # 5. Final result -- at target values, running=False
         final_updates = [

@@ -52,7 +52,7 @@ The architecture runs on an **Edge Box** with:
 | Take Photo | `take_photo` | `take_photo` | `[DONE]` | Request/response schemas match |
 | Start CC | `start_column_chromatography` | `start_column_chromatography` | `[DONE]` | Long-running with intermediate updates |
 | Terminate CC | `terminate_column_chromatography` | `terminate_column_chromatography` | `[DONE]` | Includes screen capture on termination |
-| Fraction Consolidation | `collect_column_chromatography_fractions` | `collect_column_chromatography_fractions` | `[DONE]` | `collect_config` array handled correctly |
+| Fraction Consolidation | `fraction_consolidation` | `fraction_consolidation` | `[DONE]` | `collect_config` array handled correctly |
 | Start Evaporation | `start_evaporation` | `start_evaporation` | `[DONE]` | Profiles/triggers system implemented |
 | Collapse Cartridges | Not in spec (custom addition) | `collapse_cartridges` | `[EXTRA]` | Added for convenience; not in v0.2 spec — document or remove |
 | Stop Evaporation | `stop_evaporation` | `stop_evaporation` | `[DONE]` | Stops evaporator and returns flask |
@@ -227,7 +227,7 @@ MOCK_HEARTBEAT_INTERVAL=2.0      # seconds between heartbeats
 4. `take_photo` — Photograph device components
 5. `start_column_chromatography` — Long-running CC with intermediate updates
 6. `terminate_column_chromatography` — Stop CC, capture results
-7. `collect_column_chromatography_fractions` — Collect fractions, prepare for evaporation
+7. `fraction_consolidation` — Collect fractions, prepare for evaporation
 8. `start_evaporation` — Long-running evaporation with sensor ramp
 9. `stop_evaporation` — Stop evaporator and return flask
 10. `setup_ccs_bins` — Set up waste bins at CC workstation
@@ -268,4 +268,4 @@ The mock server tracks an in-memory world state for all entities (robots, device
 
 - **Test entity IDs must match WorldState keys** — In `test_full_workflow.py`, entity lookups in assertions must use the actual entity IDs (e.g., `sc-001`, `samp-001`, `rack-loc-1`) that were registered in WorldState during setup, not `work_station_id`. WorldState keys materials by their entity ID, not by the work station where they're located (2026-02-07).
 
-- **v0.3 API migration sync (2026-02-09)** — Synchronized with BIC-lab-service v0.3 changes: `air_clean_minutes` → `air_purge_minutes` (float), new fields `solvent_a`/`solvent_b` in `CCExperimentParams`, task rename `fraction_consolidation` → `collect_column_chromatography_fractions`, `robot_id` now string `talos.001` (not UUID), CC workstation `fh_cc_001` (was `fh_ccs_001`), `EvaporationProfiles` restructured (`lower_pressure` → `updates` array), `CapturedImage` gained `create_time`, `RoundBottomFlaskProperties.state` supports complex object, `TerminateCCParams` gained optional `experiment_params`.
+- **v0.3 ground truth alignment (2026-02-10)** — Aligned all schemas to `docs/robot_messages_new.py` ground truth. Key changes: `EquipmentState` renamed to `EntityState` (backward alias kept), `PeakGatheringMode` now `StrEnum`, `CCExperimentParams.air_purge_minutes: float` → `air_clean_minutes: int`, removed `solvent_a`/`solvent_b` from `CCExperimentParams`, deleted `TerminateCCExperimentParams` and `experiment_params` field from `TerminateCCParams`, `EvaporationProfiles.updates` → `lower_pressure` (single profile), `EvaporationProfile` fields made required (no `| None`), removed `create_time` from `CapturedImage`, `TaskName.FRACTION_CONSOLIDATION` value changed to `"fraction_consolidation"`, property types tightened to enums (`RobotState`, `EntityState`, `BinState`, `CCExperimentParams`), `CCSystemUpdate.type` now `Literal["column_chromatography_system", "isco_combiflash_nextgen_300"]` without default, added `TypedRobotCommand[P]` generic class with concrete aliases. **Golden rule: `docs/robot_messages_new.py` is the single source of truth for all message schemas.**

@@ -141,13 +141,6 @@ class CCSimulator(BaseSimulator):
         """
         logger.info("Simulating terminate_cc for task {}", task_id)
 
-        # Log air_purge_minutes from command experiment_params if provided
-        if params.experiment_params is not None:
-            logger.info(
-                "Terminate CC experiment_params: air_purge_minutes={}",
-                params.experiment_params.air_purge_minutes,
-            )
-
         # Log: robot terminating CC
         await self._publish_log(
             task_id,

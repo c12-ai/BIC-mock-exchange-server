@@ -150,10 +150,8 @@ class TestCCPreconditions:
             device_type="cc_device",
             experiment_params=CCExperimentParams(
                 silicone_column="40g",
-                peak_gathering_mode="auto",
-                air_purge_minutes=5.0,
-                solvent_a="hexane",
-                solvent_b="ethyl_acetate",
+                peak_gathering_mode="all",
+                air_clean_minutes=5,
                 run_minutes=30,
                 need_equilibration=True,
             ),
@@ -183,10 +181,8 @@ class TestCCPreconditions:
             device_type="cc_device",
             experiment_params=CCExperimentParams(
                 silicone_column="40g",
-                peak_gathering_mode="auto",
-                air_purge_minutes=5.0,
-                solvent_a="hexane",
-                solvent_b="ethyl_acetate",
+                peak_gathering_mode="all",
+                air_clean_minutes=5,
                 run_minutes=30,
                 need_equilibration=True,
             ),
@@ -229,7 +225,7 @@ class TestCCPreconditions:
                 CCSystemUpdate(
                     type="column_chromatography_system",
                     id="cc-1",
-                    properties={"state": "idle", "experiment_params": None, "start_timestamp": None},
+                    properties={"state": "terminated", "experiment_params": None, "start_timestamp": None},
                 ),
             ]
         )
