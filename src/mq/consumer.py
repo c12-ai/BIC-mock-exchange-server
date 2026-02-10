@@ -288,6 +288,7 @@ class CommandConsumer:
         """
         if self._log_producer is not None and result.is_success() and result.updates:
             await self._log_producer.publish_log(result.task_id, result.updates, "task_completed")
+            await asyncio.sleep(1)  # Small delay to ensure log is published before result
 
     async def _run_long_task(
         self,
