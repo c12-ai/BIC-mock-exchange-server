@@ -12,7 +12,7 @@ from src.generators.entity_updates import (
     create_robot_update,
 )
 from src.generators.images import generate_captured_images
-from src.schemas.commands import TaskName
+from src.schemas.commands import RobotState, TaskType
 from src.schemas.results import EntityUpdate, RobotResult
 from src.simulators.base import BaseSimulator
 
@@ -25,9 +25,9 @@ if TYPE_CHECKING:
 class PhotoSimulator(BaseSimulator):
     """Handles take_photo task."""
 
-    async def simulate(self, task_id: str, task_name: TaskName, params: BaseModel) -> RobotResult:
-        if task_name != TaskName.TAKE_PHOTO:
-            raise ValueError(f"PhotoSimulator cannot handle task: {task_name}")
+    async def simulate(self, task_id: str, task_type: TaskType, params: BaseModel) -> RobotResult:
+        if task_type != TaskType.TAKE_PHOTO:
+            raise ValueError(f"PhotoSimulator cannot handle task: {task_type}")
         return await self._simulate_take_photo(task_id, params)  # type: ignore[arg-type]
 
     async def _simulate_take_photo(self, task_id: str, params: TakePhotoParams) -> RobotResult:
@@ -35,11 +35,24 @@ class PhotoSimulator(BaseSimulator):
         components = params.components if isinstance(params.components, list) else [params.components]
         logger.info("Simulating take_photo for task {} ({} components)", task_id, len(components))
 
+        # Determine current robot state from WorldState, default to IDLE
+        current_state = RobotState.IDLE
+        current_description = ""
+        if self._world_state is not None:
+            robot_state = self._world_state.get_robot_state(self.robot_id)
+            if robot_state:
+                state_str = robot_state.get("state", "idle")
+                try:
+                    current_state = RobotState(state_str)
+                except ValueError:
+                    current_state = RobotState.IDLE
+                current_description = robot_state.get("description", "")
+
         # Log: robot arrived at station
         await self._publish_log(
             task_id,
             [
-                create_robot_update(self.robot_id, params.work_station_id, params.end_state),
+                create_robot_update(self.robot_id, params.work_station, current_state, current_description),
             ],
             "robot arrived at station",
         )
@@ -52,14 +65,14 @@ class PhotoSimulator(BaseSimulator):
             await self._publish_log(
                 task_id,
                 [
-                    create_robot_update(self.robot_id, params.work_station_id, params.end_state),
+                    create_robot_update(self.robot_id, params.work_station, current_state, current_description),
                 ],
                 f"photo taken for {component}",
             )
 
-        # Build updates list starting with robot state
+        # Build updates list — final result always returns idle
         updates: list[EntityUpdate] = [
-            create_robot_update(self.robot_id, params.work_station_id, params.end_state),
+            create_robot_update(self.robot_id, params.work_station, RobotState.IDLE),
         ]
 
         # Add device state update if available in world_state
@@ -75,34 +88,27 @@ class PhotoSimulator(BaseSimulator):
             )
 
         images = generate_captured_images(
-            self.image_base_url, params.work_station_id, params.device_id, params.device_type, components
+            self.image_base_url, params.work_station, params.device_id, params.device_type, components
         )
 
-        return RobotResult(code=0, msg="take_photo completed", task_id=task_id, updates=updates, images=images)
+        return RobotResult(code=200, msg="success", task_id=task_id, updates=updates, images=images)
 
     def _get_device_update(self, device_id: str, device_type: str) -> EntityUpdate | None:
-        """Retrieve device state from world_state and create appropriate update.
-
-        Args:
-            device_id: Device identifier
-            device_type: Device type (e.g., "combiflash", "evaporator")
-
-        Returns:
-            EntityUpdate for the device if found in world_state, None otherwise
-        """
+        """Retrieve device state from world_state and create appropriate update."""
         if self._world_state is None:
             return None
 
         # Map device_type to entity_type in world_state
-        # CC devices: "column_chromatography_system"
-        # Evaporator devices: "evaporator"
         entity_type_map = {
-            "combiflash": "column_chromatography_system",
-            "column_chromatography": "column_chromatography_system",
-            "column_chromatography_system": "column_chromatography_system",
-            "isco_combiflash_nextgen_300": "column_chromatography_system",
+            "combiflash": "column_chromatography_machine",
+            "column_chromatography": "column_chromatography_machine",
+            "column_chromatography_machine": "column_chromatography_machine",
+            "column_chromatography_system": "column_chromatography_machine",
+            "isco_combiflash_nextgen_300": "column_chromatography_machine",
+            "cc-isco-300p": "column_chromatography_machine",
             "evaporator": "evaporator",
             "rotary_evaporator": "evaporator",
+            "re-buchi-r180": "evaporator",
         }
 
         entity_type = entity_type_map.get(device_type)
@@ -116,7 +122,7 @@ class PhotoSimulator(BaseSimulator):
             return None
 
         # Create appropriate update based on entity type
-        if entity_type == "column_chromatography_system":
+        if entity_type == "column_chromatography_machine":
             return create_cc_system_update(
                 system_id=device_id,
                 state=device_state.get("state", "idle"),
@@ -126,7 +132,7 @@ class PhotoSimulator(BaseSimulator):
         elif entity_type == "evaporator":
             return create_evaporator_update(
                 evaporator_id=device_id,
-                running=device_state.get("running", False),
+                state=device_state.get("state", "idle"),
                 lower_height=device_state.get("lower_height", 0.0),
                 rpm=device_state.get("rpm", 0),
                 target_temperature=device_state.get("target_temperature", 0.0),

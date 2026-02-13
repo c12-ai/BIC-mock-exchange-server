@@ -12,20 +12,14 @@ from loguru import logger
 from pydantic import BaseModel, ValidationError
 
 from src.schemas.commands import (
-    CollapseCartridgesParams,
-    FractionConsolidationParams,
-    ReturnCartridgesParams,
-    ReturnCCSBinsParams,
-    ReturnTubeRackParams,
+    CollectCCFractionsParams,
     RobotCommand,
     SetupCartridgesParams,
-    SetupCCSBinsParams,
     SetupTubeRackParams,
     StartCCParams,
     StartEvaporationParams,
-    StopEvaporationParams,
     TakePhotoParams,
-    TaskName,
+    TaskType,
     TerminateCCParams,
 )
 from src.schemas.results import RobotResult
@@ -35,6 +29,7 @@ if TYPE_CHECKING:
 
     from src.config import MockSettings
     from src.mq.connection import MQConnection
+    from src.mq.log_producer import LogProducer
     from src.mq.producer import ResultProducer
     from src.state.preconditions import PreconditionChecker
     from src.state.world_state import WorldState
@@ -48,39 +43,33 @@ if TYPE_CHECKING:
 class BaseSimulator(Protocol):
     """Protocol matching the simulator interface expected by the consumer."""
 
-    async def simulate(self, task_id: str, task_name: TaskName, params: BaseModel) -> RobotResult: ...
+    async def simulate(self, task_id: str, task_type: TaskType, params: BaseModel) -> RobotResult: ...
 
 
 @runtime_checkable
 class ScenarioManager(Protocol):
     """Protocol matching the scenario manager interface expected by the consumer."""
 
-    def should_timeout(self, task_name: TaskName) -> bool: ...
-    def should_fail(self, task_name: TaskName) -> bool: ...
-    def get_failure_result(self, task_id: str, task_name: TaskName) -> RobotResult: ...
+    def should_timeout(self, task_type: TaskType) -> bool: ...
+    def should_fail(self, task_type: TaskType) -> bool: ...
+    def get_failure_result(self, task_id: str, task_type: TaskType) -> RobotResult: ...
 
 
 # ---------------------------------------------------------------------------
 # Parameter model mapping
 # ---------------------------------------------------------------------------
 
-PARAM_MODELS: dict[TaskName, type[BaseModel]] = {
-    TaskName.SETUP_CARTRIDGES: SetupCartridgesParams,
-    TaskName.SETUP_TUBE_RACK: SetupTubeRackParams,
-    TaskName.COLLAPSE_CARTRIDGES: CollapseCartridgesParams,
-    TaskName.TAKE_PHOTO: TakePhotoParams,
-    TaskName.START_CC: StartCCParams,
-    TaskName.TERMINATE_CC: TerminateCCParams,
-    TaskName.FRACTION_CONSOLIDATION: FractionConsolidationParams,
-    TaskName.START_EVAPORATION: StartEvaporationParams,
-    TaskName.STOP_EVAPORATION: StopEvaporationParams,
-    TaskName.SETUP_CCS_BINS: SetupCCSBinsParams,
-    TaskName.RETURN_CCS_BINS: ReturnCCSBinsParams,
-    TaskName.RETURN_CARTRIDGES: ReturnCartridgesParams,
-    TaskName.RETURN_TUBE_RACK: ReturnTubeRackParams,
+PARAM_MODELS: dict[TaskType, type[BaseModel]] = {
+    TaskType.SETUP_CARTRIDGES: SetupCartridgesParams,
+    TaskType.SETUP_TUBE_RACK: SetupTubeRackParams,
+    TaskType.TAKE_PHOTO: TakePhotoParams,
+    TaskType.START_CC: StartCCParams,
+    TaskType.TERMINATE_CC: TerminateCCParams,
+    TaskType.COLLECT_CC_FRACTIONS: CollectCCFractionsParams,
+    TaskType.START_EVAPORATION: StartEvaporationParams,
 }
 
-LONG_RUNNING_TASKS: set[TaskName] = {TaskName.START_CC, TaskName.START_EVAPORATION}
+LONG_RUNNING_TASKS: set[TaskType] = {TaskType.START_CC, TaskType.START_EVAPORATION}
 
 
 # ---------------------------------------------------------------------------
@@ -98,13 +87,15 @@ class CommandConsumer:
         scenario_manager: ScenarioManager,
         settings: MockSettings,
         world_state: WorldState | None = None,
+        log_producer: LogProducer | None = None,
     ) -> None:
         self._connection = connection
         self._producer = producer
         self._scenario_manager = scenario_manager
         self._settings = settings
         self._world_state = world_state
-        self._simulators: dict[TaskName, BaseSimulator] = {}
+        self._log_producer = log_producer
+        self._simulators: dict[TaskType, BaseSimulator] = {}
         self._queue: AbstractQueue | None = None
         self._consumer_tag: str | None = None
         self._precondition_checker: PreconditionChecker | None = None
@@ -120,9 +111,9 @@ class CommandConsumer:
             self._precondition_checker = PreconditionChecker(self._world_state)
         return self._precondition_checker
 
-    def register_simulator(self, task_name: TaskName, simulator: BaseSimulator) -> None:
+    def register_simulator(self, task_type: TaskType, simulator: BaseSimulator) -> None:
         """Register a simulator for a given task type."""
-        self._simulators[task_name] = simulator
+        self._simulators[task_type] = simulator
 
     async def initialize(self) -> None:
         """Declare queue and exchange, bind them together."""
@@ -181,13 +172,13 @@ class CommandConsumer:
                 logger.debug("Parsed JSON structure: {}", json.dumps(raw, indent=2)[:1000])
 
                 # Handle special command: reset_state (before Pydantic validation)
-                if raw.get("task_name") == "reset_state":
+                if raw.get("task_type") == "reset_state":
                     task_id = raw.get("task_id", "unknown")
                     if self._world_state is not None:
                         self._world_state.reset()
                         logger.info("World state reset via reset_state command")
                         await self._producer.publish_result(
-                            RobotResult(code=0, msg="World state reset", task_id=task_id)
+                            RobotResult(code=200, msg="World state reset", task_id=task_id)
                         )
                     else:
                         await self._producer.publish_result(
@@ -204,9 +195,9 @@ class CommandConsumer:
                 return
 
             task_id = command.task_id
-            task_name = command.task_name
+            task_type = command.task_type
 
-            logger.info("Received command: task_id={}, task_name={}, params={}", task_id, task_name, command.params)
+            logger.info("Received command: task_id={}, task_type={}, params={}", task_id, task_type, command.params)
             logger.debug(
                 "Params dict keys: {}, Params values sample: {}",
                 list(command.params.keys())[:10],
@@ -215,33 +206,33 @@ class CommandConsumer:
 
             try:
                 # --- Scenario overrides ---
-                if self._scenario_manager.should_timeout(task_name):
+                if self._scenario_manager.should_timeout(task_type):
                     logger.warning("Simulating timeout for task {}", task_id)
                     return
 
-                if self._scenario_manager.should_fail(task_name):
-                    failure_result = self._scenario_manager.get_failure_result(task_id, task_name)
+                if self._scenario_manager.should_fail(task_type):
+                    failure_result = self._scenario_manager.get_failure_result(task_id, task_type)
                     logger.warning("Simulating failure for task {}", task_id)
                     await self._producer.publish_result(failure_result)
                     return
 
                 # --- Simulator lookup ---
-                simulator = self._simulators.get(task_name)
+                simulator = self._simulators.get(task_type)
                 if simulator is None:
                     error_result = RobotResult(
                         code=1000,
-                        msg=f"Unknown task type: {task_name}",
+                        msg=f"Unknown task type: {task_type}",
                         task_id=task_id,
                     )
                     await self._producer.publish_result(error_result)
                     return
 
                 # --- Parse task-specific params ---
-                params_model = self._parse_params(task_name, command.params)
+                params_model = self._parse_params(task_type, command.params)
 
                 # --- Precondition check ---
                 if self.precondition_checker is not None:
-                    precondition_result = self.precondition_checker.check(task_name, params_model)
+                    precondition_result = self.precondition_checker.check(task_type, params_model)
                     if not precondition_result.ok:
                         logger.warning(
                             "Precondition check failed for task {}: {}",
@@ -257,10 +248,11 @@ class CommandConsumer:
                         return
 
                 # --- Dispatch ---
-                if task_name in LONG_RUNNING_TASKS:
-                    asyncio.create_task(self._run_long_task(task_id, task_name, simulator, params_model))
+                if task_type in LONG_RUNNING_TASKS:
+                    asyncio.create_task(self._run_long_task(task_id, task_type, simulator, params_model))
                 else:
-                    result = await simulator.simulate(task_id, task_name, params_model)
+                    result = await simulator.simulate(task_id, task_type, params_model)
+                    await self._publish_final_log(result)
                     await self._producer.publish_result(result)
                     # Apply state updates after successful execution
                     if self._world_state is not None and result.is_success():
@@ -281,29 +273,40 @@ class CommandConsumer:
     # -- helpers -------------------------------------------------------------
 
     @staticmethod
-    def _parse_params(task_name: TaskName, raw_params: dict[str, Any]) -> BaseModel:
+    def _parse_params(task_type: TaskType, raw_params: dict[str, Any]) -> BaseModel:
         """Validate raw params dict against the correct Pydantic model."""
-        model_cls = PARAM_MODELS.get(task_name)
+        model_cls = PARAM_MODELS.get(task_type)
         if model_cls is None:
-            raise ValueError(f"No parameter model registered for {task_name}")
+            raise ValueError(f"No parameter model registered for {task_type}")
         return model_cls.model_validate(raw_params)
+
+    async def _publish_final_log(self, result: RobotResult) -> None:
+        """Publish the final entity updates from a result to the log channel.
+
+        This ensures the final entity state is available on both the log and result
+        channels, so BIC-lab-service can consume from either.
+        """
+        if self._log_producer is not None and result.is_success() and result.updates:
+            await self._log_producer.publish_log(result.task_id, result.updates, "task_completed")
+            await asyncio.sleep(1)  # Small delay to ensure log is published before result
 
     async def _run_long_task(
         self,
         task_id: str,
-        task_name: TaskName,
+        task_type: TaskType,
         simulator: BaseSimulator,
         params: BaseModel,
     ) -> None:
         """Execute a long-running simulation and publish its result."""
         try:
-            result = await simulator.simulate(task_id, task_name, params)
+            result = await simulator.simulate(task_id, task_type, params)
+            await self._publish_final_log(result)
             await self._producer.publish_result(result)
             # Apply state updates after successful execution
             if self._world_state is not None and result.is_success():
                 self._world_state.apply_updates(result.updates)
         except Exception:
-            logger.exception("Long-running task {} ({}) failed", task_id, task_name)
+            logger.exception("Long-running task {} ({}) failed", task_id, task_type)
             await self._producer.publish_result(
                 RobotResult(code=9999, msg="Internal mock server error (long-running)", task_id=task_id)
             )

@@ -6,7 +6,7 @@ import pytest
 
 from src.config import MockSettings
 from src.generators.entity_updates import create_cc_system_update, create_evaporator_update
-from src.schemas.commands import TakePhotoParams, TaskName
+from src.schemas.commands import TakePhotoParams, TaskType
 from src.simulators.photo_simulator import PhotoSimulator
 from src.state.world_state import WorldState
 
@@ -48,20 +48,25 @@ class TestPhotoDeviceStateUpdate:
         cc_update = create_cc_system_update(
             system_id="combiflash_001",
             state="running",
-            experiment_params={"silicone_column": "40g", "peak_gathering_mode": "peak"},
+            experiment_params={
+                "silicone_cartridge": "silica_40g",
+                "peak_gathering_mode": "peak",
+                "air_purge_minutes": 1.2,
+                "run_minutes": 30,
+                "need_equilibration": True,
+            },
             start_timestamp="2024-01-01T12:00:00Z",
         )
         world_state.apply_updates([cc_update])
 
         # Execute: Take photo of CC device
         params = TakePhotoParams(
-            work_station_id="cc_station_01",
+            work_station="cc_station_01",
             device_id="combiflash_001",
             device_type="combiflash",
             components=["screen", "fraction_collector"],
-            end_state="idle",
         )
-        result = await photo_sim.simulate("task_001", TaskName.TAKE_PHOTO, params)
+        result = await photo_sim.simulate("task_001", TaskType.TAKE_PHOTO, params)
 
         # Verify: Result includes both robot and device updates
         assert result.is_success()
@@ -72,13 +77,11 @@ class TestPhotoDeviceStateUpdate:
         assert robot_update.id == "talos_001"
 
         device_update = result.updates[1]
-        assert device_update.type == "column_chromatography_system"
+        assert device_update.type == "column_chromatography_machine"
         assert device_update.id == "combiflash_001"
         assert device_update.properties.state == "running"
-        assert device_update.properties.experiment_params == {
-            "silicone_column": "40g",
-            "peak_gathering_mode": "peak",
-        }
+        assert device_update.properties.experiment_params is not None
+        assert device_update.properties.experiment_params.silicone_cartridge == "silica_40g"
         assert device_update.properties.start_timestamp == "2024-01-01T12:00:00Z"
 
     @pytest.mark.asyncio
@@ -87,7 +90,7 @@ class TestPhotoDeviceStateUpdate:
         # Setup: Add evaporator to world_state
         evap_update = create_evaporator_update(
             evaporator_id="evap_001",
-            running=True,
+            state="using",
             lower_height=50.0,
             rpm=100,
             target_temperature=45.0,
@@ -99,13 +102,12 @@ class TestPhotoDeviceStateUpdate:
 
         # Execute: Take photo of evaporator
         params = TakePhotoParams(
-            work_station_id="evap_station_01",
+            work_station="evap_station_01",
             device_id="evap_001",
             device_type="evaporator",
             components=["flask", "sensor_panel"],
-            end_state="observe_evaporation",
         )
-        result = await photo_sim.simulate("task_002", TaskName.TAKE_PHOTO, params)
+        result = await photo_sim.simulate("task_002", TaskType.TAKE_PHOTO, params)
 
         # Verify: Result includes both robot and evaporator updates
         assert result.is_success()
@@ -117,7 +119,7 @@ class TestPhotoDeviceStateUpdate:
         device_update = result.updates[1]
         assert device_update.type == "evaporator"
         assert device_update.id == "evap_001"
-        assert device_update.properties.running is True
+        assert device_update.properties.state == "using"
         assert device_update.properties.lower_height == 50.0
         assert device_update.properties.rpm == 100
         assert device_update.properties.target_temperature == 45.0
@@ -132,13 +134,12 @@ class TestPhotoDeviceStateUpdate:
 
         # Execute: Take photo of device not in world_state
         params = TakePhotoParams(
-            work_station_id="cc_station_01",
+            work_station="cc_station_01",
             device_id="combiflash_999",
             device_type="combiflash",
             components=["screen"],
-            end_state="idle",
         )
-        result = await photo_sim.simulate("task_003", TaskName.TAKE_PHOTO, params)
+        result = await photo_sim.simulate("task_003", TaskType.TAKE_PHOTO, params)
 
         # Verify: Result includes only robot update (graceful fallback)
         assert result.is_success()
@@ -153,13 +154,12 @@ class TestPhotoDeviceStateUpdate:
 
         # Execute: Take photo
         params = TakePhotoParams(
-            work_station_id="cc_station_01",
+            work_station="cc_station_01",
             device_id="combiflash_001",
             device_type="combiflash",
             components=["screen"],
-            end_state="idle",
         )
-        result = await photo_sim_no_ws.simulate("task_004", TaskName.TAKE_PHOTO, params)
+        result = await photo_sim_no_ws.simulate("task_004", TaskType.TAKE_PHOTO, params)
 
         # Verify: Result includes only robot update (no crash)
         assert result.is_success()
@@ -173,13 +173,12 @@ class TestPhotoDeviceStateUpdate:
 
         # Execute: Take photo of unknown device type
         params = TakePhotoParams(
-            work_station_id="station_01",
+            work_station="station_01",
             device_id="mystery_device_001",
             device_type="mystery_device",
             components=["component_a"],
-            end_state="idle",
         )
-        result = await photo_sim.simulate("task_005", TaskName.TAKE_PHOTO, params)
+        result = await photo_sim.simulate("task_005", TaskType.TAKE_PHOTO, params)
 
         # Verify: Result includes only robot update (unknown device type ignored)
         assert result.is_success()
@@ -192,7 +191,7 @@ class TestPhotoDeviceStateUpdate:
         # Setup: Add CC system to world_state
         cc_update = create_cc_system_update(
             system_id="cc_system_001",
-            state="idle",
+            state="mounted",
             experiment_params=None,
             start_timestamp=None,
         )
@@ -200,16 +199,15 @@ class TestPhotoDeviceStateUpdate:
 
         # Execute: Take photo using 'column_chromatography' device_type
         params = TakePhotoParams(
-            work_station_id="cc_station_01",
+            work_station="cc_station_01",
             device_id="cc_system_001",
             device_type="column_chromatography",
             components=["screen"],
-            end_state="idle",
         )
-        result = await photo_sim.simulate("task_006", TaskName.TAKE_PHOTO, params)
+        result = await photo_sim.simulate("task_006", TaskType.TAKE_PHOTO, params)
 
         # Verify: Device state is included
         assert result.is_success()
         assert len(result.updates) == 2
-        assert result.updates[1].type == "column_chromatography_system"
+        assert result.updates[1].type == "column_chromatography_machine"
         assert result.updates[1].id == "cc_system_001"

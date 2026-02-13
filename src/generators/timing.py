@@ -41,18 +41,30 @@ def calculate_cc_duration(run_minutes: int, multiplier: float) -> float:
 
 
 def calculate_evaporation_duration(profiles: dict, multiplier: float) -> float:
-    """Calculate evaporation duration from profiles stop trigger or default 30min.
+    """Calculate evaporation duration from profiles updates or stop trigger.
 
-    Attempts to extract time_in_sec from the stop trigger in profiles.
-    Falls back to 30 minutes if the trigger is not found.
+    v0.3 ground truth uses ``profiles.updates`` list with trigger-based durations.
+    Falls back to legacy ``profiles.stop.trigger`` and then 30-minute default.
 
     Args:
-        profiles: Evaporation profiles dictionary with optional stop trigger.
+        profiles: Evaporation profiles dictionary.
         multiplier: Speed multiplier applied to the duration.
 
     Returns:
         Simulation duration in seconds.
     """
+    # v0.3: Check updates list for time-based triggers
+    updates = profiles.get("updates")
+    if updates and isinstance(updates, list):
+        for update in updates:
+            if isinstance(update, dict):
+                trigger = update.get("trigger")
+                if trigger and isinstance(trigger, dict):
+                    time_sec = trigger.get("time_in_sec")
+                    if time_sec is not None:
+                        return float(time_sec) * multiplier
+
+    # Legacy: Check stop trigger
     stop = profiles.get("stop")
     if stop and isinstance(stop, dict):
         trigger = stop.get("trigger")
@@ -60,6 +72,7 @@ def calculate_evaporation_duration(profiles: dict, multiplier: float) -> float:
             time_sec = trigger.get("time_in_sec")
             if time_sec is not None:
                 return float(time_sec) * multiplier
+
     # Default: 30 minutes
     return 30.0 * 60.0 * multiplier
 

@@ -39,7 +39,7 @@ class MockSettings(BaseSettings):
 
     # Server
     server_name: str = "mock-robot-server"
-    robot_id: str = "00000000-0000-4000-a000-000000000001"
+    robot_id: str = "talos.001"
     log_level: str = "INFO"
 
     # Long-running task intervals (seconds at 1.0x)

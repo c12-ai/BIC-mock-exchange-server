@@ -61,7 +61,7 @@ def test_apply_updates_overwrites_existing_entity() -> None:
             RobotUpdate(
                 type="robot",
                 id="robot-1",
-                properties={"location": "ws-1", "state": "moving"},
+                properties={"location": "ws-1", "state": "idle"},
             ),
         ]
     )
@@ -109,7 +109,7 @@ def test_get_entities_by_type() -> None:
 
     updates = [
         RobotUpdate(type="robot", id="robot-1", properties={"location": "ws-1", "state": "idle"}),
-        RobotUpdate(type="robot", id="robot-2", properties={"location": "ws-2", "state": "moving"}),
+        RobotUpdate(type="robot", id="robot-2", properties={"location": "ws-2", "state": "idle"}),
         SilicaCartridgeUpdate(type="silica_cartridge", id="sc-1", properties={"location": "ws-1", "state": "mounted"}),
     ]
 
@@ -120,7 +120,7 @@ def test_get_entities_by_type() -> None:
     assert "robot-1" in robots
     assert "robot-2" in robots
     assert robots["robot-1"]["state"] == "idle"
-    assert robots["robot-2"]["state"] == "moving"
+    assert robots["robot-2"]["state"] == "idle"
 
     cartridges = ws.get_entities_by_type("silica_cartridge")
     assert len(cartridges) == 1
@@ -191,11 +191,17 @@ def test_apply_updates_with_complex_entities() -> None:
             },
         ),
         CCSystemUpdate(
-            type="column_chromatography_system",
+            type="column_chromatography_machine",
             id="cc-1",
             properties={
                 "state": "running",
-                "experiment_params": {"run_minutes": 30},
+                "experiment_params": {
+                    "silicone_cartridge": "silica_40g",
+                    "peak_gathering_mode": "all",
+                    "air_clean_minutes": 5,
+                    "run_minutes": 30,
+                    "need_equilibration": True,
+                },
                 "start_timestamp": "2025-01-15T10:00:00Z",
             },
         ),
@@ -206,7 +212,7 @@ def test_apply_updates_with_complex_entities() -> None:
                 "pulled_out_mm": 100.0,
                 "pulled_out_rate": 5.0,
                 "closed": False,
-                "front_waste_bin": "open",
+                "front_waste_bin": {"content_state": "empty", "has_lid": False, "lid_state": None, "substance": None},
                 "back_waste_bin": None,
             },
         ),
@@ -216,17 +222,17 @@ def test_apply_updates_with_complex_entities() -> None:
 
     evaporator = ws.get_entity("evaporator", "evap-1")
     assert evaporator is not None
-    assert evaporator["running"] is True
+    assert evaporator["state"] == "idle"
     assert evaporator["current_temperature"] == 45.0
 
-    cc_system = ws.get_entity("column_chromatography_system", "cc-1")
+    cc_system = ws.get_entity("column_chromatography_machine", "cc-1")
     assert cc_system is not None
     assert cc_system["state"] == "running"
     assert cc_system["experiment_params"]["run_minutes"] == 30
 
     chute = ws.get_entity("pcc_left_chute", "pcc-left-ws-1")
     assert chute is not None
-    assert chute["front_waste_bin"] == "open"
+    assert chute["front_waste_bin"] == {"content_state": "empty", "has_lid": False, "lid_state": None, "substance": None}
     assert chute["back_waste_bin"] is None
 
 
@@ -243,7 +249,7 @@ def test_world_state_thread_safety() -> None:
                     RobotUpdate(
                         type="robot",
                         id=robot_id,
-                        properties={"location": f"ws-{i}", "state": "moving"},
+                        properties={"location": f"ws-{i}", "state": "idle"},
                     ),
                 ]
             )

@@ -1,7 +1,7 @@
 """Robot result schemas for the mock server.
 
-Mock-friendly versions of production schemas that accept string states for testing.
-Uses relaxed typing while maintaining the same structure as production.
+Aligned with v0.3 ground truth — uses typed state enums for entity properties,
+includes ``description`` field on all entity properties.
 """
 
 from __future__ import annotations
@@ -10,73 +10,89 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from src.schemas.protocol import CapturedImage as CapturedImage  # noqa: PLC0414
+from src.schemas.protocol import (
+    CapturedImage as CapturedImage,  # noqa: PLC0414
+)
+from src.schemas.protocol import (
+    CCExperimentParams,
+    ContainerState,
+    RobotState,
+)
 
-# --- Entity Property Models (Mock-friendly: accepts strings for states) ---
+# --- Entity Property Models ---
 
 
 class RobotProperties(BaseModel):
-    """Properties for robot entity updates. Mock version accepts string states."""
+    """Properties for robot entity updates."""
 
     location: str
-    state: str  # Mock: string instead of RobotState enum
+    state: RobotState
+    description: str = ""
 
 
 class CartridgeProperties(BaseModel):
-    """Properties for silica/sample cartridge entity updates. Mock version accepts string states."""
+    """Properties for silica/sample cartridge entity updates."""
 
     location: str
-    state: str  # Mock: string instead of EquipmentState enum
+    state: str  # ConsumableState or plain string
+    description: str = ""
 
 
 class TubeRackProperties(BaseModel):
     """Properties for tube rack entity updates."""
 
     location: str
-    state: str  # Compound states like "used,pulled_out,ready_for_recovery"
+    state: str  # ToolState or plain string
+    description: str = ""
 
 
 class RoundBottomFlaskProperties(BaseModel):
     """Properties for round bottom flask entity updates."""
 
     location: str
-    state: str  # Compound states like "used,evaporating"
+    state: ContainerState | str = ""  # ContainerState model or legacy string
+    description: str = ""
 
 
 class CCSExtModuleProperties(BaseModel):
-    """Properties for CC external module entity updates. Mock version accepts string states."""
+    """Properties for CC external module entity updates."""
 
-    state: str  # Mock: string instead of EquipmentState enum
+    state: str  # DeviceState or plain string
+    description: str = ""
 
 
-class CCSystemProperties(BaseModel):
-    """Properties for CC system entity updates. Mock version uses dict for params."""
+class CCMachineProperties(BaseModel):
+    """Properties for CC machine entity updates (v0.3 ground truth)."""
 
-    state: str  # Mock: string instead of EquipmentState enum
-    experiment_params: dict | None = None  # Mock: dict instead of CCExperimentParams
+    state: str  # DeviceState or plain string
+    experiment_params: CCExperimentParams | None = None
     start_timestamp: str | None = None
+    description: str = ""
 
 
 class EvaporatorProperties(BaseModel):
     """Properties for evaporator entity updates with sensor readings."""
 
-    running: bool
-    lower_height: float
-    rpm: int
-    target_temperature: float
-    current_temperature: float
-    target_pressure: float
-    current_pressure: float
+    state: str = "idle"  # DeviceState or plain string
+    lower_height: float = 0.0
+    rpm: int = 0
+    target_temperature: float = 0.0
+    current_temperature: float = 0.0
+    target_pressure: float = 0.0
+    current_pressure: float = 0.0
+    description: str = ""
 
 
 class PCCChuteProperties(BaseModel):
-    """Properties for post-column-chromatography chute entity updates. Mock version accepts string bin states."""
+    """Properties for post-column-chromatography chute entity updates."""
 
-    pulled_out_mm: float
-    pulled_out_rate: float
-    closed: bool
-    front_waste_bin: str | None = None  # Mock: string instead of BinState enum
-    back_waste_bin: str | None = None  # Mock: string instead of BinState enum
+    state: str = "idle"  # DeviceState or plain string
+    pulled_out_mm: float = 0.0
+    pulled_out_rate: float = 0.0
+    closed: bool = True
+    front_waste_bin: ContainerState | None = None
+    back_waste_bin: ContainerState | None = None
+    description: str = ""
 
 
 # --- Entity Update Models (Discriminated Union) ---
@@ -131,11 +147,11 @@ class CCSExtModuleUpdate(BaseModel):
 
 
 class CCSystemUpdate(BaseModel):
-    """Column chromatography system state update."""
+    """Column chromatography machine state update (v0.3: column_chromatography_machine)."""
 
-    type: Literal["column_chromatography_system"] = "column_chromatography_system"
+    type: Literal["column_chromatography_machine", "isco_combiflash_nextgen_300"]
     id: str
-    properties: CCSystemProperties
+    properties: CCMachineProperties
 
 
 class EvaporatorUpdate(BaseModel):
@@ -163,7 +179,6 @@ class PCCRightChuteUpdate(BaseModel):
 
 
 # --- Discriminated Union Type ---
-
 EntityUpdate = Annotated[
     RobotUpdate
     | SilicaCartridgeUpdate
@@ -179,11 +194,11 @@ EntityUpdate = Annotated[
 ]
 
 
-# --- Result Message (use mock EntityUpdate type) ---
+# --- Result Message ---
 
 
 class RobotResult(BaseModel):
-    """Result message published to MQ after task simulation. Mock version uses relaxed entity updates."""
+    """Result message published to MQ after task simulation."""
 
     code: int
     msg: str
@@ -193,13 +208,16 @@ class RobotResult(BaseModel):
 
     def is_success(self) -> bool:
         """Check if the result indicates success."""
-        return self.code == 0
+        return self.code == 200
 
 
 class LogMessage(BaseModel):
-    """Log message published to {robot_id}.log during skill execution."""
+    """Log message published to {robot_id}.log during skill execution.
 
-    code: int = -1
+    Mock-server internal type — not part of v0.3 protocol.
+    """
+
+    code: int = 200
     msg: str = "state_update"
     task_id: str
     updates: list[EntityUpdate] = Field(default_factory=list)
@@ -211,8 +229,12 @@ class HeartbeatMessage(BaseModel):
 
     robot_id: str
     timestamp: str  # ISO format
-    state: str = "idle"  # simple status indicator
+    state: RobotState = RobotState.IDLE
+    Work_station: str | None = None  # noqa: N815 — matches ground truth casing
 
+
+# Backward compat alias: CCSystemProperties → CCMachineProperties
+CCSystemProperties = CCMachineProperties
 
 # Re-export for backwards compatibility with existing mock server code
 __all__ = [
@@ -221,6 +243,7 @@ __all__ = [
     "TubeRackProperties",
     "RoundBottomFlaskProperties",
     "CCSExtModuleProperties",
+    "CCMachineProperties",
     "CCSystemProperties",
     "EvaporatorProperties",
     "PCCChuteProperties",

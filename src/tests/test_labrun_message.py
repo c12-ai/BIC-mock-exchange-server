@@ -33,17 +33,14 @@ async def send_test_message():
         # Test message (matching your input params)
         message_data = {
             "task_id": "90af1d88-139b-4b6f-881d-4c9d8a68e9a7",
-            "task_name": "setup_tubes_to_column_machine",
+            "task_type": "setup_tubes_to_column_machine",
             "params": {
-                "work_station_id": "00000000-0000-4000-a000-000000000010",
-                "silica_cartridge_id": "00000000-0000-4000-a000-000000000060",
-                "silica_cartridge_location_id": "bic_09B_l3_001",
-                "silica_cartridge_type": "sepaflash_40g",
+                "work_station": "00000000-0000-4000-a000-000000000010",
                 "sample_cartridge_id": "00000000-0000-4000-a000-000000000070",
-                "sample_cartridge_location_id": "bic_09B_l3_001",
+                "sample_cartridge_location": "bic_09B_l3_001",
                 "sample_cartridge_type": "ilok_40g",
-                "robot_id": "00000000-0000-4000-a000-000000000001"
-            }
+                "silica_cartridge_type": "sepaflash_40g",
+            },
         }
 
         # Convert to JSON

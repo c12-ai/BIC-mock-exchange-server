@@ -49,17 +49,12 @@ The architecture runs on an **Edge Box** with:
 |-------|---------------|-------------------|--------|-------------|
 | Setup Cartridges | `setup_tubes_to_column_machine` | `setup_tubes_to_column_machine` | `[DONE]` | Request/response schemas match |
 | Setup Tube Rack | `setup_tube_rack` | `setup_tube_rack` | `[DONE]` | Request/response schemas match |
+| Collapse Cartridges | `collapse_cartridges` | `collapse_cartridges` | `[DONE]` | Request/response schemas match |
 | Take Photo | `take_photo` | `take_photo` | `[DONE]` | Request/response schemas match |
 | Start CC | `start_column_chromatography` | `start_column_chromatography` | `[DONE]` | Long-running with intermediate updates |
 | Terminate CC | `terminate_column_chromatography` | `terminate_column_chromatography` | `[DONE]` | Includes screen capture on termination |
 | Fraction Consolidation | `fraction_consolidation` | `fraction_consolidation` | `[DONE]` | `collect_config` array handled correctly |
 | Start Evaporation | `start_evaporation` | `start_evaporation` | `[DONE]` | Profiles/triggers system implemented |
-| Collapse Cartridges | Not in spec (custom addition) | `collapse_cartridges` | `[EXTRA]` | Added for convenience; not in v0.2 spec — document or remove |
-| Stop Evaporation | `stop_evaporation` | `stop_evaporation` | `[DONE]` | Stops evaporator and returns flask |
-| Setup CCS Bins | `setup_ccs_bins` | `setup_ccs_bins` | `[DONE]` | Sets up waste bins at CC workstation |
-| Return CCS Bins | `return_ccs_bins` | `return_ccs_bins` | `[DONE]` | Returns used bins to waste area |
-| Return Cartridges | `return_cartridges` | `return_cartridges` | `[DONE]` | Removes and returns used cartridges |
-| Return Tube Rack | `return_tube_rack` | `return_tube_rack` | `[DONE]` | Removes and returns used tube rack |
 
 ### 3. Real-time Log Streaming
 
@@ -90,7 +85,7 @@ The architecture runs on an **Edge Box** with:
 | Aspect | Spec Requirement | Current State | Gap |
 |--------|-----------------|---------------|-----|
 | Robot states | idle, wait_for_screen_manipulation, watch_column_machine_screen, moving_with_round_bottom_flask, observe_evaporation | `[DONE]` | All defined in `RobotState` enum |
-| Equipment states | available, mounted, using, used, running, terminated | `[DONE]` | Defined in `EquipmentState` enum |
+| Entity states | mounted, using, used, running, terminated, evaporating | `[DONE]` | Defined in `EntityState` enum (v0.3 ground truth) |
 | Compound states | e.g. `"used,pulled_out,ready_for_recovery"` | `[PARTIAL]` | Handled as raw strings in some cases, no formal state machine |
 | Entity types — 10 types | robot, silica_cartridge, sample_cartridge, tube_rack, round_bottom_flask, ccs_ext_module, column_chromatography_system, evaporator, pcc_left_chute, pcc_right_chute | `[DONE]` | All 10 entity types have factory functions and Pydantic models |
 | Device state lifecycle | Formal state transitions (spec notes: "needs systematic design") | `[PARTIAL]` | States exist but no validation of legal transitions |
@@ -101,7 +96,7 @@ The architecture runs on an **Edge Box** with:
 |--------|-----------------|---------------|-----|
 | Safety conflict detection | Robot checks preconditions (e.g., cartridge position, existing mounts) | `[DONE]` | PreconditionChecker validates state before task execution |
 | Stateful error responses | Errors based on current world state | `[DONE]` | WorldState tracks all entities; precondition failures return error code 2000-2099 |
-| Error code ranges | Task-specific error codes | `[DONE]` | Codes 1010-1139 for task failures, 2000-2099 for precondition violations |
+| Error code ranges | Task-specific error codes | `[DONE]` | Codes 1010-1089 for task failures, 2000-2099 for precondition violations |
 
 ### 8. Configuration & Deployment
 
@@ -116,9 +111,9 @@ The architecture runs on an **Edge Box** with:
 
 | Aspect | Current State | Gap |
 |--------|---------------|-----|
-| Unit tests | `[DONE]` — 113 tests covering all components | — |
+| Unit tests | `[DONE]` — 108 tests covering all components | — |
 | Integration tests (MQ) | `[DONE]` — 8 consumer integration tests verifying dispatch flow, world state, preconditions, scenarios |  |
-| Simulator integration tests | `[DONE]` — 8 simulator tests verifying end-to-end task execution | — |
+| Simulator integration tests | `[DONE]` — 3 simulator tests verifying end-to-end task execution | — |
 | Heartbeat tests | `[DONE]` — Heartbeat publisher lifecycle and message publishing tested | — |
 | Multi-robot tests | `[PARTIAL]` | No multi-robot scenarios; single instance tested |
 
@@ -195,11 +190,11 @@ src/
   main.py            # Entry point, wiring, graceful shutdown
   mq/                # RabbitMQ connection, consumer, producer, log producer, heartbeat
   schemas/           # Protocol enums, command/result Pydantic models
-  simulators/        # Per-skill simulation logic (base ABC + 6 simulators)
+  simulators/        # Per-skill simulation logic (base ABC + 5 simulators)
   generators/        # Pure factories for entity updates, images, timing
   scenarios/         # Failure/timeout injection
   state/             # WorldState tracking, precondition checking
-  tests/             # 134 tests (unit + integration)
+  tests/             # 108 tests (unit + integration)
 ```
 
 ### Running
@@ -212,7 +207,7 @@ uv run pytest src/tests/           # Run tests
 ```env
 MOCK_MQ_HOST=localhost
 MOCK_MQ_EXCHANGE=robot.exchange                          # Single TOPIC exchange
-MOCK_ROBOT_ID=00000000-0000-4000-a000-000000000001       # UUID format
+MOCK_ROBOT_ID=talos.001                                  # String format (was UUID)
 MOCK_BASE_DELAY_MULTIPLIER=0.01   # 100x speed (0.1 = 10x, 1.0 = realistic)
 MOCK_FAILURE_RATE=0.0             # 0.0-1.0
 MOCK_TIMEOUT_RATE=0.0             # 0.0-1.0
@@ -220,7 +215,7 @@ MOCK_DEFAULT_SCENARIO=success     # success | failure | timeout
 MOCK_HEARTBEAT_INTERVAL=2.0      # seconds between heartbeats
 ```
 
-### Implemented Skills (All 13 Tasks)
+### Implemented Skills (v0.3 Ground Truth — 8 Tasks)
 1. `setup_tubes_to_column_machine` — Mount cartridges to CCS workstation
 2. `setup_tube_rack` — Mount tube rack to CCS workstation
 3. `collapse_cartridges` — Disassemble used cartridges
@@ -229,11 +224,6 @@ MOCK_HEARTBEAT_INTERVAL=2.0      # seconds between heartbeats
 6. `terminate_column_chromatography` — Stop CC, capture results
 7. `fraction_consolidation` — Collect fractions, prepare for evaporation
 8. `start_evaporation` — Long-running evaporation with sensor ramp
-9. `stop_evaporation` — Stop evaporator and return flask
-10. `setup_ccs_bins` — Set up waste bins at CC workstation
-11. `return_ccs_bins` — Return used bins to waste area
-12. `return_cartridges` — Remove and return used cartridges
-13. `return_tube_rack` — Remove and return used tube rack
 
 ### World State Tracking & Preconditions
 
@@ -241,7 +231,7 @@ The mock server tracks an in-memory world state for all entities (robots, device
 
 **Error Code Ranges:**
 - `1000-1009`: General errors (unknown task, validation failure)
-- `1010-1139`: Task-specific failures (per-task 10-code ranges)
+- `1010-1089`: Task-specific failures (per-task 10-code ranges)
 - `2000-2099`: Precondition violations (state-driven errors)
 
 **Special Commands:**
@@ -262,8 +252,12 @@ The mock server tracks an in-memory world state for all entities (robots, device
 
 - **Never add fields to command schemas that aren't in `docs/robots/note.md`** — The `note.md` in BIC-lab-service is the canonical protocol spec. Adding fields like `tube_rack_id` to `SetupTubeRackParams` that aren't in the spec creates protocol drift. Instead, resolve IDs internally via WorldState lookups. Always cross-reference `note.md` before changing message schemas (2026-02-07).
 
-- **Never relax strict enum types to `str` — add missing values to the enum instead** — When encountering validation errors for unknown enum values (e.g., robot state `"moving"` not in `RobotState`), the correct fix is to add the missing values to the enum, NOT to change the field type from enum to `str`. Intermediate robot states (`moving`, `terminating_cc`, `pulling_out_tube_rack`) were added to `RobotState` in both this project and BIC-lab-service (2026-02-07).
+- **Never relax strict enum types to `str` — add missing values to the enum instead** — When encountering validation errors for unknown enum values, the correct fix is to add the missing values to the enum, NOT to change the field type from enum to `str`. Note: in the v0.3 strict alignment (2026-02-10), intermediate robot states (`moving`, `terminating_cc`, `pulling_out_tube_rack`) were removed from `RobotState` since they are not in the ground truth. Simulators now use `RobotState.IDLE` for transit states.
 
 - **Photo simulator must map all actual device_type values** — The `entity_type_map` in `photo_simulator.py` must include all device_type strings that BIC-lab-service sends (e.g., `isco_combiflash_nextgen_300`, `column_chromatography_system`, `rotary_evaporator`), not just shortened aliases. Missing mappings caused "Unknown device_type for photo" warnings (2026-02-07).
 
 - **Test entity IDs must match WorldState keys** — In `test_full_workflow.py`, entity lookups in assertions must use the actual entity IDs (e.g., `sc-001`, `samp-001`, `rack-loc-1`) that were registered in WorldState during setup, not `work_station_id`. WorldState keys materials by their entity ID, not by the work station where they're located (2026-02-07).
+
+- **v0.3 ground truth alignment (2026-02-10)** — Aligned all schemas to `docs/robot_messages_new.py` ground truth. Key changes: `EquipmentState` renamed to `EntityState` (backward alias kept), `PeakGatheringMode` now `StrEnum`, `CCExperimentParams.air_purge_minutes: float` → `air_clean_minutes: int`, removed `solvent_a`/`solvent_b` from `CCExperimentParams`, deleted `TerminateCCExperimentParams` and `experiment_params` field from `TerminateCCParams`, `EvaporationProfiles.updates` → `lower_pressure` (single profile), `EvaporationProfile` fields made required (no `| None`), removed `create_time` from `CapturedImage`, `TaskName.FRACTION_CONSOLIDATION` value changed to `"fraction_consolidation"`, property types tightened to enums (`RobotState`, `EntityState`, `BinState`, `CCExperimentParams`), `CCSystemUpdate.type` now `Literal["column_chromatography_system", "isco_combiflash_nextgen_300"]` without default, added `TypedRobotCommand[P]` generic class with concrete aliases. **Golden rule: `docs/robot_messages_new.py` is the single source of truth for all message schemas.**
+
+- **v0.3 strict alignment — remove all extras (2026-02-10)** — Removed 5 tasks not in ground truth (`stop_evaporation`, `setup_ccs_bins`, `return_ccs_bins`, `return_cartridges`, `return_tube_rack`), 3 intermediate robot states (`moving`, `terminating_cc`, `pulling_out_tube_rack`), 4 extra entity states (`available`, `returned`, `maintenance`, `error`), the `EquipmentState` backward alias, and the entire `CleanupSimulator`. Reduced task count from 13 to 8, test count from ~134 to 108. Simulators now use `RobotState.IDLE` for transit states since the ground truth has no intermediate movement states.

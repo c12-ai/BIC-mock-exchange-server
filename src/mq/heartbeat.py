@@ -10,6 +10,7 @@ import aio_pika
 from loguru import logger
 
 from src.generators.entity_updates import generate_robot_timestamp
+from src.schemas.protocol import RobotState
 
 if TYPE_CHECKING:
     from aio_pika.abc import AbstractExchange
@@ -72,16 +73,24 @@ class HeartbeatPublisher:
             raise RuntimeError("HeartbeatPublisher not initialized. Call initialize() first.")
 
         # Read current robot state from world state if available
-        current_state = "idle"
+        current_state = RobotState.IDLE
+        work_station: str | None = None
         if self._world_state is not None:
             robot_state = self._world_state.get_robot_state(self._settings.robot_id)
             if robot_state:
-                current_state = robot_state.get("state", "idle")
+                state_str = robot_state.get("state", "idle")
+                # Map to RobotState enum, default to IDLE for unknown values
+                try:
+                    current_state = RobotState(state_str)
+                except ValueError:
+                    current_state = RobotState.IDLE
+                work_station = robot_state.get("location")
 
         msg = HeartbeatMessage(
             robot_id=self._settings.robot_id,
             timestamp=generate_robot_timestamp(),
             state=current_state,
+            Work_station=work_station,
         )
         routing_key = f"{self._settings.robot_id}.hb"
         body = msg.model_dump_json().encode()

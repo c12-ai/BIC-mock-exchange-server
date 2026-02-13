@@ -15,9 +15,8 @@ from src.mq.heartbeat import HeartbeatPublisher
 from src.mq.log_producer import LogProducer
 from src.mq.producer import ResultProducer
 from src.scenarios.manager import ScenarioManager
-from src.schemas.commands import TaskName
+from src.schemas.commands import TaskType
 from src.simulators.cc_simulator import CCSimulator
-from src.simulators.cleanup_simulator import CleanupSimulator
 from src.simulators.consolidation_simulator import ConsolidationSimulator
 from src.simulators.evaporation_simulator import EvaporationSimulator
 from src.simulators.photo_simulator import PhotoSimulator
@@ -87,24 +86,19 @@ async def run_server() -> None:
     cc_sim = CCSimulator(producer, settings, log_producer=log_producer, world_state=world_state)
     consolidation_sim = ConsolidationSimulator(producer, settings, log_producer=log_producer, world_state=world_state)
     evaporation_sim = EvaporationSimulator(producer, settings, log_producer=log_producer, world_state=world_state)
-    cleanup_sim = CleanupSimulator(producer, settings, log_producer=log_producer, world_state=world_state)
 
     # --- Consumer ---
-    consumer = CommandConsumer(mq, producer, scenario_manager, settings, world_state=world_state)
+    consumer = CommandConsumer(
+        mq, producer, scenario_manager, settings, world_state=world_state, log_producer=log_producer
+    )
 
-    consumer.register_simulator(TaskName.SETUP_CARTRIDGES, setup_sim)
-    consumer.register_simulator(TaskName.SETUP_TUBE_RACK, setup_sim)
-    consumer.register_simulator(TaskName.COLLAPSE_CARTRIDGES, setup_sim)
-    consumer.register_simulator(TaskName.TAKE_PHOTO, photo_sim)
-    consumer.register_simulator(TaskName.START_CC, cc_sim)
-    consumer.register_simulator(TaskName.TERMINATE_CC, cc_sim)
-    consumer.register_simulator(TaskName.FRACTION_CONSOLIDATION, consolidation_sim)
-    consumer.register_simulator(TaskName.START_EVAPORATION, evaporation_sim)
-    consumer.register_simulator(TaskName.STOP_EVAPORATION, cleanup_sim)
-    consumer.register_simulator(TaskName.SETUP_CCS_BINS, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_CCS_BINS, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_CARTRIDGES, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_TUBE_RACK, cleanup_sim)
+    consumer.register_simulator(TaskType.SETUP_CARTRIDGES, setup_sim)
+    consumer.register_simulator(TaskType.SETUP_TUBE_RACK, setup_sim)
+    consumer.register_simulator(TaskType.TAKE_PHOTO, photo_sim)
+    consumer.register_simulator(TaskType.START_CC, cc_sim)
+    consumer.register_simulator(TaskType.TERMINATE_CC, cc_sim)
+    consumer.register_simulator(TaskType.COLLECT_CC_FRACTIONS, consolidation_sim)
+    consumer.register_simulator(TaskType.START_EVAPORATION, evaporation_sim)
 
     try:
         await consumer.initialize()

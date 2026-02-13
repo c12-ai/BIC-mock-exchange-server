@@ -15,8 +15,8 @@ import pytest
 from src.config import MockSettings
 from src.mq.consumer import CommandConsumer
 from src.scenarios.manager import ScenarioManager
+from src.schemas.commands import TaskType
 from src.simulators.cc_simulator import CCSimulator
-from src.simulators.cleanup_simulator import CleanupSimulator
 from src.simulators.consolidation_simulator import ConsolidationSimulator
 from src.simulators.evaporation_simulator import EvaporationSimulator
 from src.simulators.photo_simulator import PhotoSimulator
@@ -41,7 +41,7 @@ def make_mock_message(task_id: str, task_name: str, params: dict) -> AbstractInc
     """Create a mock AbstractIncomingMessage."""
     command = {
         "task_id": task_id,
-        "task_name": task_name,
+        "task_type": task_name,
         "params": params,
     }
     mock_msg = AsyncMock()
@@ -56,7 +56,6 @@ def mock_producer():
     """Mock ResultProducer that captures published results."""
     producer = AsyncMock()
     producer.publish_result = AsyncMock()
-    producer.publish_intermediate_update = AsyncMock()
     return producer
 
 
@@ -83,8 +82,6 @@ def consumer_with_simulators(mock_connection, mock_producer, mock_log_producer, 
     consumer = CommandConsumer(mock_connection, mock_producer, scenario_manager, mock_settings, world_state=world_state)
 
     # Create real simulators with mock producer
-    from src.schemas.commands import TaskName
-
     setup_sim = SetupSimulator(mock_producer, mock_settings, log_producer=mock_log_producer, world_state=world_state)
     photo_sim = PhotoSimulator(mock_producer, mock_settings, log_producer=mock_log_producer, world_state=world_state)
     cc_sim = CCSimulator(mock_producer, mock_settings, log_producer=mock_log_producer, world_state=world_state)
@@ -94,24 +91,15 @@ def consumer_with_simulators(mock_connection, mock_producer, mock_log_producer, 
     evaporation_sim = EvaporationSimulator(
         mock_producer, mock_settings, log_producer=mock_log_producer, world_state=world_state
     )
-    cleanup_sim = CleanupSimulator(
-        mock_producer, mock_settings, log_producer=mock_log_producer, world_state=world_state
-    )
 
-    # Register all simulators
-    consumer.register_simulator(TaskName.SETUP_CARTRIDGES, setup_sim)
-    consumer.register_simulator(TaskName.SETUP_TUBE_RACK, setup_sim)
-    consumer.register_simulator(TaskName.COLLAPSE_CARTRIDGES, setup_sim)
-    consumer.register_simulator(TaskName.TAKE_PHOTO, photo_sim)
-    consumer.register_simulator(TaskName.START_CC, cc_sim)
-    consumer.register_simulator(TaskName.TERMINATE_CC, cc_sim)
-    consumer.register_simulator(TaskName.FRACTION_CONSOLIDATION, consolidation_sim)
-    consumer.register_simulator(TaskName.START_EVAPORATION, evaporation_sim)
-    consumer.register_simulator(TaskName.STOP_EVAPORATION, cleanup_sim)
-    consumer.register_simulator(TaskName.SETUP_CCS_BINS, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_CCS_BINS, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_CARTRIDGES, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_TUBE_RACK, cleanup_sim)
+    # Register all simulators (v0.3 ground truth — 7 tasks)
+    consumer.register_simulator(TaskType.SETUP_CARTRIDGES, setup_sim)
+    consumer.register_simulator(TaskType.SETUP_TUBE_RACK, setup_sim)
+    consumer.register_simulator(TaskType.TAKE_PHOTO, photo_sim)
+    consumer.register_simulator(TaskType.START_CC, cc_sim)
+    consumer.register_simulator(TaskType.TERMINATE_CC, cc_sim)
+    consumer.register_simulator(TaskType.COLLECT_CC_FRACTIONS, consolidation_sim)
+    consumer.register_simulator(TaskType.START_EVAPORATION, evaporation_sim)
 
     return consumer, mock_producer, world_state
 
@@ -126,9 +114,7 @@ class TestConsumerIntegration:
 
         # Create a setup_tube_rack command
         params = {
-            "work_station_id": "ws-1",
-            "tube_rack_location_id": "rack-loc-1",
-            "end_state": "idle",
+            "work_station": "ws_bic_09_fh_001",
         }
         msg = make_mock_message("task-001", "setup_tube_rack", params)
 
@@ -138,9 +124,9 @@ class TestConsumerIntegration:
         # Verify result was published
         mock_producer.publish_result.assert_called_once()
         result = mock_producer.publish_result.call_args[0][0]
-        assert result.code == 0
+        assert result.code == 200
         assert result.task_id == "task-001"
-        assert result.msg == "setup_tube_rack completed"
+        assert result.msg == "success"
         assert len(result.updates) > 0
 
     @pytest.mark.asyncio
@@ -150,42 +136,36 @@ class TestConsumerIntegration:
 
         # 1. Send setup_cartridges → verify world state updated
         params1 = {
-            "work_station_id": "ws-1",
-            "silica_cartridge_location_id": "storage-A1",
-            "silica_cartridge_type": "silica",
-            "silica_cartridge_id": "sc-001",
-            "sample_cartridge_location_id": "storage-B1",
-            "sample_cartridge_type": "sample",
+            "silica_cartridge_type": "silica_40g",
+            "sample_cartridge_location": "bic_09B_l3_002",
+            "sample_cartridge_type": "sample_40g",
             "sample_cartridge_id": "samp-001",
+            "work_station": "ws_bic_09_fh_001",
         }
         msg1 = make_mock_message("task-001", "setup_tubes_to_column_machine", params1)
         await consumer._process_message(msg1)
 
         # Verify world state has ext_module
-        ext_module = world_state.get_entity("ccs_ext_module", "ws-1")
+        ext_module = world_state.get_entity("ccs_ext_module", "ws_bic_09_fh_001")
         assert ext_module is not None
         assert ext_module["state"] == "using"
 
         # 2. Send setup_tube_rack → verify tube_rack tracked
         params2 = {
-            "work_station_id": "ws-1",
-            "tube_rack_location_id": "rack-storage-1",
-            "end_state": "idle",
+            "work_station": "ws_bic_09_fh_001",
         }
         msg2 = make_mock_message("task-002", "setup_tube_rack", params2)
         await consumer._process_message(msg2)
 
-        # Verify world state has tube_rack
-        tube_rack = world_state.get_entity("tube_rack", "rack-storage-1")
+        # Verify world state has tube_rack (keyed by "tube_rack_001")
+        tube_rack = world_state.get_entity("tube_rack", "tube_rack_001")
         assert tube_rack is not None
-        assert tube_rack["state"] == "mounted"
+        assert tube_rack["state"] == "inuse"
 
         # 3. Verify world state tracks multiple entities
-        # Check that all entities from commands are tracked
-        assert world_state.has_entity("ccs_ext_module", "ws-1")
-        assert world_state.has_entity("silica_cartridge", "sc-001")
+        assert world_state.has_entity("ccs_ext_module", "ws_bic_09_fh_001")
         assert world_state.has_entity("sample_cartridge", "samp-001")
-        assert world_state.has_entity("tube_rack", "rack-storage-1")
+        assert world_state.has_entity("tube_rack", "tube_rack_001")
         assert world_state.has_entity("robot", "test-robot-001")
 
     @pytest.mark.asyncio
@@ -195,10 +175,16 @@ class TestConsumerIntegration:
 
         # 1. Send terminate_cc without prior start_cc → expect precondition failure (2030-2031)
         params = {
-            "work_station_id": "ws-1",
+            "work_station": "ws_bic_09_fh_001",
             "device_id": "cc-device-1",
-            "device_type": "column_chromatography_system",
-            "end_state": "idle",
+            "device_type": "cc-isco-300p",
+            "experiment_params": {
+                "silicone_cartridge": "silica_40g",
+                "peak_gathering_mode": "peak",
+                "air_purge_minutes": 1.2,
+                "run_minutes": 30,
+                "need_equilibration": True,
+            },
         }
         msg = make_mock_message("task-001", "terminate_column_chromatography", params)
         await consumer._process_message(msg)
@@ -213,20 +199,18 @@ class TestConsumerIntegration:
 
         # 2. Send setup_cartridges twice → expect precondition failure (2001)
         params1 = {
-            "work_station_id": "ws-2",
-            "silica_cartridge_location_id": "storage-A2",
-            "silica_cartridge_type": "silica",
-            "silica_cartridge_id": "sc-002",
-            "sample_cartridge_location_id": "storage-B2",
-            "sample_cartridge_type": "sample",
+            "silica_cartridge_type": "silica_40g",
+            "sample_cartridge_location": "bic_09B_l3_002",
+            "sample_cartridge_type": "sample_40g",
             "sample_cartridge_id": "samp-002",
+            "work_station": "ws-2",
         }
         msg1 = make_mock_message("task-002", "setup_tubes_to_column_machine", params1)
         await consumer._process_message(msg1)
 
         # First should succeed
         result1 = mock_producer.publish_result.call_args[0][0]
-        assert result1.code == 0
+        assert result1.code == 200
 
         mock_producer.reset_mock()
 
@@ -263,16 +247,12 @@ class TestConsumerIntegration:
         consumer = CommandConsumer(mock_connection, mock_producer, scenario_manager, settings, world_state=world_state)
 
         # Register a simulator
-        from src.schemas.commands import TaskName
-
         setup_sim = SetupSimulator(mock_producer, settings, log_producer=mock_log_producer)
-        consumer.register_simulator(TaskName.SETUP_TUBE_RACK, setup_sim)
+        consumer.register_simulator(TaskType.SETUP_TUBE_RACK, setup_sim)
 
         # Send command
         params = {
-            "work_station_id": "ws-1",
-            "tube_rack_location_id": "rack-loc-1",
-            "end_state": "idle",
+            "work_station": "ws_bic_09_fh_001",
         }
         msg = make_mock_message("task-001", "setup_tube_rack", params)
         await consumer._process_message(msg)
@@ -281,7 +261,7 @@ class TestConsumerIntegration:
         mock_producer.publish_result.assert_called_once()
         result = mock_producer.publish_result.call_args[0][0]
         assert result.task_id == "task-001"
-        assert result.code != 0  # Should be a failure code (1020-1029 for setup_tube_rack)
+        assert result.code != 200  # Should be a failure code (1020-1029 for setup_tube_rack)
         assert 1020 <= result.code <= 1029
 
     @pytest.mark.asyncio
@@ -308,16 +288,12 @@ class TestConsumerIntegration:
         consumer = CommandConsumer(mock_connection, mock_producer, scenario_manager, settings, world_state=world_state)
 
         # Register a simulator
-        from src.schemas.commands import TaskName
-
         setup_sim = SetupSimulator(mock_producer, settings, log_producer=mock_log_producer)
-        consumer.register_simulator(TaskName.SETUP_TUBE_RACK, setup_sim)
+        consumer.register_simulator(TaskType.SETUP_TUBE_RACK, setup_sim)
 
         # Send command
         params = {
-            "work_station_id": "ws-1",
-            "tube_rack_location_id": "rack-loc-1",
-            "end_state": "idle",
+            "work_station": "ws_bic_09_fh_001",
         }
         msg = make_mock_message("task-001", "setup_tube_rack", params)
         await consumer._process_message(msg)
@@ -332,26 +308,24 @@ class TestConsumerIntegration:
 
         # 1. Populate world state via commands
         params1 = {
-            "work_station_id": "ws-1",
-            "silica_cartridge_location_id": "storage-A1",
-            "silica_cartridge_type": "silica",
-            "silica_cartridge_id": "sc-001",
-            "sample_cartridge_location_id": "storage-B1",
-            "sample_cartridge_type": "sample",
+            "silica_cartridge_type": "silica_40g",
+            "sample_cartridge_location": "bic_09B_l3_002",
+            "sample_cartridge_type": "sample_40g",
             "sample_cartridge_id": "samp-001",
+            "work_station": "ws_bic_09_fh_001",
         }
         msg1 = make_mock_message("task-001", "setup_tubes_to_column_machine", params1)
         await consumer._process_message(msg1)
 
         # Verify world state has entities
-        ext_module = world_state.get_entity("ccs_ext_module", "ws-1")
+        ext_module = world_state.get_entity("ccs_ext_module", "ws_bic_09_fh_001")
         assert ext_module is not None
 
         # 2. Reset world state directly (simulating the reset_state command path)
         world_state.reset()
 
         # 3. Verify world state is cleared
-        ext_module = world_state.get_entity("ccs_ext_module", "ws-1")
+        ext_module = world_state.get_entity("ccs_ext_module", "ws_bic_09_fh_001")
         assert ext_module is None
 
     @pytest.mark.asyncio
@@ -360,17 +334,15 @@ class TestConsumerIntegration:
         consumer, mock_producer, world_state = consumer_with_simulators
 
         # Unregister the take_photo simulator to simulate unknown task
-        from src.schemas.commands import TaskName
-
-        if TaskName.TAKE_PHOTO in consumer._simulators:
-            del consumer._simulators[TaskName.TAKE_PHOTO]
+        if TaskType.TAKE_PHOTO in consumer._simulators:
+            del consumer._simulators[TaskType.TAKE_PHOTO]
 
         # Send take_photo command (unregistered)
         params = {
-            "work_station_id": "ws-1",
+            "work_station": "ws-1",
             "device_id": "cam-001",
             "device_type": "camera",
-            "end_state": "idle",
+            "components": ["component1"],
         }
         msg = make_mock_message("task-001", "take_photo", params)
         await consumer._process_message(msg)
@@ -387,12 +359,10 @@ class TestConsumerIntegration:
         """Test invalid parameters return validation error (code 1001)."""
         consumer, mock_producer, world_state = consumer_with_simulators
 
-        # Send command with missing required parameter
+        # Send command with missing required parameter (sample_cartridge_id is required)
         params = {
-            "work_station_id": "ws-1",
-            "silica_cartridge_id": "sc-001",
-            # Missing: silica_cartridge_location_id, silica_cartridge_type,
-            # sample_cartridge_location_id, sample_cartridge_type, sample_cartridge_id
+            "work_station": "ws_bic_09_fh_001",
+            # Missing: sample_cartridge_id (required)
         }
         msg = make_mock_message("task-001", "setup_tubes_to_column_machine", params)
         await consumer._process_message(msg)

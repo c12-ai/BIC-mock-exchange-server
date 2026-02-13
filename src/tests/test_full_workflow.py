@@ -15,14 +15,13 @@ import pytest
 from src.config import MockSettings
 from src.mq.consumer import CommandConsumer
 from src.scenarios.manager import ScenarioManager
-from src.schemas.commands import TaskName
+from src.schemas.commands import TaskType
 from src.schemas.results import (
-    CCSystemProperties,
+    CCMachineProperties,
     CCSystemUpdate,
     TubeRackUpdate,
 )
 from src.simulators.cc_simulator import CCSimulator
-from src.simulators.cleanup_simulator import CleanupSimulator
 from src.simulators.consolidation_simulator import ConsolidationSimulator
 from src.simulators.evaporation_simulator import EvaporationSimulator
 from src.simulators.photo_simulator import PhotoSimulator
@@ -52,7 +51,7 @@ def make_mock_message(task_id: str, task_name: str, params: dict) -> AbstractInc
     """Create a mock AbstractIncomingMessage."""
     command = {
         "task_id": task_id,
-        "task_name": task_name,
+        "task_type": task_name,
         "params": params,
     }
     mock_msg = AsyncMock()
@@ -101,21 +100,14 @@ def _build_consumer(
     evaporation_sim = EvaporationSimulator(
         mock_producer, settings, log_producer=mock_log_producer, world_state=world_state
     )
-    cleanup_sim = CleanupSimulator(mock_producer, settings, log_producer=mock_log_producer, world_state=world_state)
 
-    consumer.register_simulator(TaskName.SETUP_CARTRIDGES, setup_sim)
-    consumer.register_simulator(TaskName.SETUP_TUBE_RACK, setup_sim)
-    consumer.register_simulator(TaskName.COLLAPSE_CARTRIDGES, setup_sim)
-    consumer.register_simulator(TaskName.TAKE_PHOTO, photo_sim)
-    consumer.register_simulator(TaskName.START_CC, cc_sim)
-    consumer.register_simulator(TaskName.TERMINATE_CC, cc_sim)
-    consumer.register_simulator(TaskName.FRACTION_CONSOLIDATION, consolidation_sim)
-    consumer.register_simulator(TaskName.START_EVAPORATION, evaporation_sim)
-    consumer.register_simulator(TaskName.STOP_EVAPORATION, cleanup_sim)
-    consumer.register_simulator(TaskName.SETUP_CCS_BINS, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_CCS_BINS, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_CARTRIDGES, cleanup_sim)
-    consumer.register_simulator(TaskName.RETURN_TUBE_RACK, cleanup_sim)
+    consumer.register_simulator(TaskType.SETUP_CARTRIDGES, setup_sim)
+    consumer.register_simulator(TaskType.SETUP_TUBE_RACK, setup_sim)
+    consumer.register_simulator(TaskType.TAKE_PHOTO, photo_sim)
+    consumer.register_simulator(TaskType.START_CC, cc_sim)
+    consumer.register_simulator(TaskType.TERMINATE_CC, cc_sim)
+    consumer.register_simulator(TaskType.COLLECT_CC_FRACTIONS, consolidation_sim)
+    consumer.register_simulator(TaskType.START_EVAPORATION, evaporation_sim)
 
     return consumer
 
@@ -136,13 +128,13 @@ class TestMultiRobotScenarios:
 
         producer1 = AsyncMock()
         producer1.publish_result = AsyncMock()
-        producer1.publish_intermediate_update = AsyncMock()
+
         log_producer1 = AsyncMock()
         log_producer1.publish_log = AsyncMock()
 
         producer2 = AsyncMock()
         producer2.publish_result = AsyncMock()
-        producer2.publish_intermediate_update = AsyncMock()
+
         log_producer2 = AsyncMock()
         log_producer2.publish_log = AsyncMock()
 
@@ -157,13 +149,11 @@ class TestMultiRobotScenarios:
             "task-r1-001",
             "setup_tubes_to_column_machine",
             {
-                "work_station_id": "ws-1",
-                "silica_cartridge_location_id": "storage-A1",
-                "silica_cartridge_type": "silica",
-                "silica_cartridge_id": "sc-001",
-                "sample_cartridge_location_id": "storage-B1",
-                "sample_cartridge_type": "sample",
+                "silica_cartridge_type": "silica_40g",
+                "sample_cartridge_location": "bic_09B_l3_002",
+                "sample_cartridge_type": "sample_40g",
                 "sample_cartridge_id": "samp-001",
+                "work_station": "ws-1",
             },
         )
         await consumer1._process_message(msg1)
@@ -173,31 +163,27 @@ class TestMultiRobotScenarios:
             "task-r2-001",
             "setup_tube_rack",
             {
-                "work_station_id": "ws-2",
-                "tube_rack_location_id": "rack-loc-2",
-                "end_state": "idle",
+                "work_station": "ws-2",
             },
         )
         await consumer2._process_message(msg2)
 
         # Verify robot 1 results
         result1 = producer1.publish_result.call_args[0][0]
-        assert result1.code == 0
+        assert result1.code == 200
         assert result1.task_id == "task-r1-001"
 
         # Verify robot 2 results
         result2 = producer2.publish_result.call_args[0][0]
-        assert result2.code == 0
+        assert result2.code == 200
         assert result2.task_id == "task-r2-001"
 
         # Robot 1 world state has ext_module but not tube_rack from robot 2
         assert world1.has_entity("ccs_ext_module", "ws-1")
-        assert world1.has_entity("silica_cartridge", "sc-001")
-        assert not world1.has_entity("tube_rack", "rack-loc-2")
+        assert not world1.has_entity("tube_rack", "tube_rack_001")
 
         # Robot 2 world state has tube_rack but not cartridges from robot 1
-        assert world2.has_entity("tube_rack", "rack-loc-2")
-        assert not world2.has_entity("silica_cartridge", "sc-001")
+        assert world2.has_entity("tube_rack", "tube_rack_001")
         assert not world2.has_entity("ccs_ext_module", "ws-1")
 
     @pytest.mark.asyncio
@@ -207,7 +193,6 @@ class TestMultiRobotScenarios:
         settings_r2 = _make_settings("talos_002")
 
         # Verify the routing key patterns derive from robot_id.
-        # We check by inspecting the settings values that the producers would use.
         assert f"{settings_r1.robot_id}.result" == "talos_001.result"
         assert f"{settings_r1.robot_id}.log" == "talos_001.log"
         assert f"{settings_r1.robot_id}.hb" == "talos_001.hb"
@@ -221,7 +206,6 @@ class TestMultiRobotScenarios:
         # Additionally verify that simulators receive the correct robot_id
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -244,29 +228,23 @@ class TestFullBICWorkflow:
     async def test_complete_lab_workflow(self) -> None:
         """Execute the full BIC lab sequence and verify world state + results at each step.
 
-        Sequence:
+        Sequence (v0.3 ground truth — 7 tasks):
         1. setup_cartridges
         2. setup_tube_rack
-        3. setup_ccs_bins
-        4. take_photo
-        5. terminate_cc (requires CC system "running" in world state)
-        6. collapse_cartridges (requires cartridges "used" -- set by terminate_cc)
-        7. fraction_consolidation (requires tube_rack "used"/"using" -- set by terminate_cc)
-        8. return_ccs_bins
-        9. return_cartridges
-        10. return_tube_rack
+        3. take_photo
+        4. terminate_cc (requires CC system "running" in world state)
+        5. fraction_consolidation (requires tube_rack "used"/"inuse" -- set by setup)
         """
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
         world_state = WorldState()
         consumer = _build_consumer(settings, producer, log_producer, world_state)
 
-        ws_id = "ws-1"
+        ws_id = "ws_bic_09_fh_001"
 
         # -- 1. setup_cartridges ------------------------------------------------
         producer.reset_mock()
@@ -274,20 +252,17 @@ class TestFullBICWorkflow:
             "task-001",
             "setup_tubes_to_column_machine",
             {
-                "work_station_id": ws_id,
-                "silica_cartridge_location_id": "storage-A1",
-                "silica_cartridge_type": "silica",
-                "silica_cartridge_id": "sc-001",
-                "sample_cartridge_location_id": "storage-B1",
-                "sample_cartridge_type": "sample",
+                "silica_cartridge_type": "silica_40g",
+                "sample_cartridge_location": "bic_09B_l3_002",
+                "sample_cartridge_type": "sample_40g",
                 "sample_cartridge_id": "samp-001",
+                "work_station": ws_id,
             },
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"setup_cartridges failed: {result.msg}"
+        assert result.code == 200, f"setup_cartridges failed: {result.msg}"
         assert world_state.has_entity("ccs_ext_module", ws_id)
-        assert world_state.has_entity("silica_cartridge", "sc-001")
         assert world_state.has_entity("sample_cartridge", "samp-001")
 
         # -- 2. setup_tube_rack -------------------------------------------------
@@ -296,231 +271,88 @@ class TestFullBICWorkflow:
             "task-002",
             "setup_tube_rack",
             {
-                "work_station_id": ws_id,
-                "tube_rack_location_id": "rack-loc-1",
-                "end_state": "idle",
+                "work_station": ws_id,
             },
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"setup_tube_rack failed: {result.msg}"
-        assert world_state.has_entity("tube_rack", "rack-loc-1")
+        assert result.code == 200, f"setup_tube_rack failed: {result.msg}"
+        assert world_state.has_entity("tube_rack", "tube_rack_001")
 
-        # -- 3. setup_ccs_bins --------------------------------------------------
+        # -- 3. take_photo ------------------------------------------------------
         producer.reset_mock()
         msg = make_mock_message(
             "task-003",
-            "setup_ccs_bins",
-            {
-                "work_station_id": ws_id,
-                "bin_location_ids": ["bin-1", "bin-2"],
-                "end_state": "idle",
-            },
-        )
-        await consumer._process_message(msg)
-        result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"setup_ccs_bins failed: {result.msg}"
-        assert world_state.has_entity("pcc_left_chute", ws_id)
-        assert world_state.has_entity("pcc_right_chute", ws_id)
-
-        # -- 4. take_photo ------------------------------------------------------
-        producer.reset_mock()
-        msg = make_mock_message(
-            "task-004",
             "take_photo",
             {
-                "work_station_id": ws_id,
+                "work_station": ws_id,
                 "device_id": "cam-001",
                 "device_type": "camera",
                 "components": ["silica_cartridge", "sample_cartridge"],
-                "end_state": "idle",
             },
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"take_photo failed: {result.msg}"
+        assert result.code == 200, f"take_photo failed: {result.msg}"
         assert result.images is not None and len(result.images) > 0
 
-        # -- 5. terminate_cc ----------------------------------------------------
+        # -- 4. terminate_cc ----------------------------------------------------
         # Precondition: CC system must be "running" in world state.
         # Since we skip start_cc (long-running), manually inject the running CC state.
         world_state.apply_updates(
             [
                 CCSystemUpdate(
-                    type="column_chromatography_system",
+                    type="column_chromatography_machine",
                     id="cc-device-1",
                     properties={"state": "running", "experiment_params": None, "start_timestamp": None},
                 ),
             ]
         )
-        # terminate_cc also expects {ws_id} IDs in its result.
-        # We also need to make sure the tube_rack used by terminate_cc gets "used" state
-        # so fraction_consolidation precondition passes (checks {ws_id}).
-        # Manually add the tube_rack with the ID that terminate_cc produces ({ws_id}).
-        world_state.apply_updates(
-            [
-                TubeRackUpdate(
-                    type="tube_rack",
-                    id=ws_id,
-                    properties={"location": ws_id, "state": "using"},
-                ),
-            ]
-        )
 
+        producer.reset_mock()
+        msg = make_mock_message(
+            "task-004",
+            "terminate_column_chromatography",
+            {
+                "work_station": ws_id,
+                "device_id": "cc-device-1",
+                "device_type": "cc-isco-300p",
+                "experiment_params": {
+                    "silicone_cartridge": "silica_40g",
+                    "peak_gathering_mode": "peak",
+                    "air_purge_minutes": 1.2,
+                    "run_minutes": 30,
+                    "need_equilibration": True,
+                },
+            },
+        )
+        await consumer._process_message(msg)
+        result = producer.publish_result.call_args[0][0]
+        assert result.code == 200, f"terminate_cc failed: {result.msg}"
+
+        # After terminate_cc: CC system -> idle, materials -> used
+        cc = world_state.get_entity("column_chromatography_machine", "cc-device-1")
+        assert cc is not None
+        assert cc["state"] == "idle"
+
+        # -- 5. fraction_consolidation ------------------------------------------
+        # Precondition: tube_rack must be in use or contaminated.
+        # tube_rack_001 was set to "inuse" by setup_tube_rack (step 2),
+        # terminate_cc changed it to "contaminated" (step 4).
         producer.reset_mock()
         msg = make_mock_message(
             "task-005",
-            "terminate_column_chromatography",
+            "collect_column_chromatography_fractions",
             {
-                "work_station_id": ws_id,
+                "work_station": ws_id,
                 "device_id": "cc-device-1",
-                "device_type": "column_chromatography_system",
-                "end_state": "idle",
-            },
-        )
-        await consumer._process_message(msg)
-        result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"terminate_cc failed: {result.msg}"
-        # After terminate_cc: CC system -> terminated, cartridges sc-ws-1/sac-ws-1 -> used
-        cc = world_state.get_entity("column_chromatography_system", "cc-device-1")
-        assert cc is not None
-        assert cc["state"] == "terminated"
-
-        # terminate_cc sets silica/sample to "used"
-        silica_cc = world_state.get_entity("silica_cartridge", "sc-001")
-        assert silica_cc is not None
-        assert silica_cc["state"] == "used"
-
-        sample_cc = world_state.get_entity("sample_cartridge", "samp-001")
-        assert sample_cc is not None
-        assert sample_cc["state"] == "used"
-
-        # -- 6. collapse_cartridges ---------------------------------------------
-        # Precondition: silica + sample cartridges must be "used".
-        producer.reset_mock()
-        msg = make_mock_message(
-            "task-006",
-            "collapse_cartridges",
-            {
-                "work_station_id": ws_id,
-                "silica_cartridge_id": "sc-001",
-                "sample_cartridge_id": "samp-001",
-                "end_state": "idle",
-            },
-        )
-        await consumer._process_message(msg)
-        result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"collapse_cartridges failed: {result.msg}"
-
-        # -- 7. fraction_consolidation ------------------------------------------
-        # Precondition: tube_rack tr-{ws_id} must be "used" or "using".
-        # terminate_cc set tr-{ws_id} to "used".
-        producer.reset_mock()
-        msg = make_mock_message(
-            "task-007",
-            "fraction_consolidation",
-            {
-                "work_station_id": ws_id,
-                "device_id": "cc-device-1",
-                "device_type": "column_chromatography_system",
+                "device_type": "cc-isco-300p",
                 "collect_config": [1, 1, 0, 1, 0],
-                "end_state": "idle",
             },
         )
         await consumer._process_message(msg)
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"fraction_consolidation failed: {result.msg}"
-
-        # -- 8. return_ccs_bins -------------------------------------------------
-        # Precondition: bins exist in chutes. But fraction_consolidation may have
-        # overwritten the chute state. Let's check and re-add if needed.
-        # The consolidation simulator creates pcc_left_chute and pcc_right_chute
-        # with default properties, so they should still have some values.
-        # However, the default chute updates from consolidation may not have
-        # front_waste_bin set. Let's manually ensure bins exist.
-        left_chute = world_state.get_entity("pcc_left_chute", ws_id)
-        if left_chute is None or (not left_chute.get("front_waste_bin") and not left_chute.get("back_waste_bin")):
-            from src.schemas.results import PCCLeftChuteUpdate
-
-            world_state.apply_updates(
-                [
-                    PCCLeftChuteUpdate(
-                        type="pcc_left_chute",
-                        id=ws_id,
-                        properties={
-                            "pulled_out_mm": 100.0,
-                            "pulled_out_rate": 5.0,
-                            "closed": False,
-                            "front_waste_bin": "open",
-                            "back_waste_bin": None,
-                        },
-                    ),
-                ]
-            )
-
-        producer.reset_mock()
-        msg = make_mock_message(
-            "task-008",
-            "return_ccs_bins",
-            {
-                "work_station_id": ws_id,
-                "waste_area_id": "waste-01",
-                "end_state": "idle",
-            },
-        )
-        await consumer._process_message(msg)
-        result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"return_ccs_bins failed: {result.msg}"
-
-        # -- 9. return_cartridges -----------------------------------------------
-        # Precondition: cartridges must exist with "used" state after collapse.
-        producer.reset_mock()
-        msg = make_mock_message(
-            "task-009",
-            "return_cartridges",
-            {
-                "work_station_id": ws_id,
-                "silica_cartridge_id": "sc-001",
-                "sample_cartridge_id": "samp-001",
-                "waste_area_id": "waste-01",
-                "end_state": "idle",
-            },
-        )
-        await consumer._process_message(msg)
-        result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"return_cartridges failed: {result.msg}"
-
-        # Verify cartridges are now returned
-        silica_final = world_state.get_entity("silica_cartridge", "sc-001")
-        assert silica_final is not None
-        assert silica_final["state"] == "returned"
-
-        # -- 10. return_tube_rack -----------------------------------------------
-        # Precondition: tube_rack must exist.
-        producer.reset_mock()
-        msg = make_mock_message(
-            "task-010",
-            "return_tube_rack",
-            {
-                "work_station_id": ws_id,
-                "tube_rack_id": "rack-loc-1",
-                "waste_area_id": "waste-01",
-                "end_state": "idle",
-            },
-        )
-        await consumer._process_message(msg)
-        result = producer.publish_result.call_args[0][0]
-        assert result.code == 0, f"return_tube_rack failed: {result.msg}"
-
-        # Verify tube rack returned
-        rack_final = world_state.get_entity("tube_rack", "rack-loc-1")
-        assert rack_final is not None
-        assert rack_final["state"] == "returned"
-
-        # Verify the ext_module is now available (returned by return_cartridges)
-        ext = world_state.get_entity("ccs_ext_module", ws_id)
-        assert ext is not None
-        assert ext["state"] == "available"
+        assert result.code == 200, f"fraction_consolidation failed: {result.msg}"
 
 
 # ---------------------------------------------------------------------------
@@ -537,7 +369,6 @@ class TestLogStreamDuringExecution:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -546,17 +377,15 @@ class TestLogStreamDuringExecution:
         from src.schemas.commands import SetupCartridgesParams
 
         params = SetupCartridgesParams(
-            work_station_id="ws-1",
-            silica_cartridge_location_id="storage-A1",
-            silica_cartridge_type="silica",
-            silica_cartridge_id="sc-001",
-            sample_cartridge_location_id="storage-B1",
-            sample_cartridge_type="sample",
+            work_station="ws_bic_09_fh_001",
+            silica_cartridge_type="silica_40g",
+            sample_cartridge_location="bic_09B_l3_002",
+            sample_cartridge_type="sample_40g",
             sample_cartridge_id="samp-001",
         )
 
-        result = await sim.simulate("task-log-001", TaskName.SETUP_CARTRIDGES, params)
-        assert result.code == 0
+        result = await sim.simulate("task-log-001", TaskType.SETUP_CARTRIDGES, params)
+        assert result.code == 200
         # setup_cartridges emits 3 log calls: robot moving, cartridges mounted, robot idle
         assert log_producer.publish_log.call_count >= 1
 
@@ -566,51 +395,31 @@ class TestLogStreamDuringExecution:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
         sim = CCSimulator(producer, settings, log_producer=log_producer)
 
-        from src.schemas.commands import RobotState, TerminateCCParams
+        from src.schemas.commands import CCExperimentParams, TerminateCCParams
 
         params = TerminateCCParams(
-            work_station_id="ws-1",
+            work_station="ws_bic_09_fh_001",
             device_id="cc-001",
-            device_type="column_chromatography_system",
-            end_state=RobotState.IDLE,
+            device_type="cc-isco-300p",
+            experiment_params=CCExperimentParams(
+                silicone_cartridge="silica_40g",
+                peak_gathering_mode="peak",
+                air_purge_minutes=1.2,
+                run_minutes=30,
+                need_equilibration=True,
+            ),
         )
 
-        result = await sim.simulate("task-log-002", TaskName.TERMINATE_CC, params)
-        assert result.code == 0
+        result = await sim.simulate("task-log-002", TaskType.TERMINATE_CC, params)
+        assert result.code == 200
         # terminate_cc emits 2 log calls: robot terminating CC, CC terminated
         assert log_producer.publish_log.call_count >= 1
 
-    @pytest.mark.asyncio
-    async def test_cleanup_simulator_emits_logs(self) -> None:
-        """CleanupSimulator.simulate() for stop_evaporation calls publish_log at least once."""
-        settings = _make_settings("talos_001")
-        producer = AsyncMock()
-        producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
-        log_producer = AsyncMock()
-        log_producer.publish_log = AsyncMock()
-
-        sim = CleanupSimulator(producer, settings, log_producer=log_producer)
-
-        from src.schemas.commands import RobotState, StopEvaporationParams
-
-        params = StopEvaporationParams(
-            work_station_id="ws-1",
-            device_id="evap-001",
-            device_type="evaporator",
-            end_state=RobotState.IDLE,
-        )
-
-        result = await sim.simulate("task-log-003", TaskName.STOP_EVAPORATION, params)
-        assert result.code == 0
-        # stop_evaporation emits 2 log calls: robot moving, evaporation stopped
-        assert log_producer.publish_log.call_count >= 1
 
 
 # ---------------------------------------------------------------------------
@@ -627,7 +436,6 @@ class TestResetStateViaCommand:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
@@ -639,21 +447,18 @@ class TestResetStateViaCommand:
             "task-pop-001",
             "setup_tubes_to_column_machine",
             {
-                "work_station_id": "ws-1",
-                "silica_cartridge_location_id": "storage-A1",
-                "silica_cartridge_type": "silica",
-                "silica_cartridge_id": "sc-001",
-                "sample_cartridge_location_id": "storage-B1",
-                "sample_cartridge_type": "sample",
+                "silica_cartridge_type": "silica_40g",
+                "sample_cartridge_location": "bic_09B_l3_002",
+                "sample_cartridge_type": "sample_40g",
                 "sample_cartridge_id": "samp-001",
+                "work_station": "ws_bic_09_fh_001",
             },
         )
         await consumer._process_message(msg)
 
         result = producer.publish_result.call_args[0][0]
-        assert result.code == 0
-        assert world_state.has_entity("ccs_ext_module", "ws-1")
-        assert world_state.has_entity("silica_cartridge", "sc-001")
+        assert result.code == 200
+        assert world_state.has_entity("ccs_ext_module", "ws_bic_09_fh_001")
 
         # 2. Send reset_state command
         producer.reset_mock()
@@ -661,13 +466,12 @@ class TestResetStateViaCommand:
         await consumer._process_message(msg)
 
         reset_result = producer.publish_result.call_args[0][0]
-        assert reset_result.code == 0
+        assert reset_result.code == 200
         assert reset_result.task_id == "task-reset-001"
         assert "reset" in reset_result.msg.lower()
 
         # 3. Verify world state is completely cleared
-        assert not world_state.has_entity("ccs_ext_module", "ws-1")
-        assert not world_state.has_entity("silica_cartridge", "sc-001")
+        assert not world_state.has_entity("ccs_ext_module", "ws_bic_09_fh_001")
         assert not world_state.has_entity("sample_cartridge", "samp-001")
         assert not world_state.has_entity("robot", "talos_001")
 
@@ -677,7 +481,6 @@ class TestResetStateViaCommand:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
 
         mock_connection = AsyncMock()
         scenario_manager = ScenarioManager(settings)
@@ -708,44 +511,33 @@ class TestCCExperimentContextPersistence:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
-        # Build consumer with world_state
-        consumer, _, world_state = (
-            _build_consumer(settings, producer, log_producer, world_state=WorldState()).values()
-            if hasattr(_build_consumer(settings, producer, log_producer, world_state=WorldState()), "values")
-            else (_build_consumer(settings, producer, log_producer, world_state=WorldState()), producer, WorldState())
-        )
-
-        # Actually, let me use the proper approach
         world_state = WorldState()
         consumer = _build_consumer(settings, producer, log_producer, world_state=world_state)
 
         from src.schemas.commands import (
             CCExperimentParams,
-            RobotState,
             StartCCParams,
             TerminateCCParams,
         )
 
         # 1. Execute start_cc to populate world_state with experiment context
         experiment_params = CCExperimentParams(
-            silicone_column="40g",
+            silicone_cartridge="silica_40g",
             peak_gathering_mode="all",
-            air_clean_minutes=5,
+            air_purge_minutes=1.2,
             run_minutes=30,
             need_equilibration=True,
-            left_rack="10-tube",
-            right_rack="10-tube",
+            left_rack="16x150",
+            right_rack=None,
         )
         start_params = StartCCParams(
-            work_station_id="ws-1",
+            work_station="ws_bic_09_fh_001",
             device_id="cc-001",
-            device_type="column_chromatography_system",
+            device_type="cc-isco-300p",
             experiment_params=experiment_params,
-            end_state=RobotState.IDLE,
         )
 
         start_msg = make_mock_message("task-start-cc", "start_column_chromatography", start_params.model_dump())
@@ -756,11 +548,19 @@ class TestCCExperimentContextPersistence:
 
         await asyncio.sleep(0.2)
 
-        # Verify start_cc intermediate updates were published
-        assert producer.publish_intermediate_update.call_count > 0, (
-            "start_cc should have published intermediate updates"
-        )
-        initial_updates = producer.publish_intermediate_update.call_args_list[0][0][1]
+        # Verify start_cc intermediate updates were published via log producer
+        assert log_producer.publish_log.call_count > 0, "start_cc should have published intermediate log updates"
+        # Find the log call that contains CC system updates
+        initial_updates = None
+        for call in log_producer.publish_log.call_args_list:
+            updates_arg = call[0][1]  # second positional arg is updates list
+            for update in updates_arg:
+                if isinstance(update, CCSystemUpdate):
+                    initial_updates = updates_arg
+                    break
+            if initial_updates is not None:
+                break
+        assert initial_updates is not None, "start_cc should have published a CC system update via log"
 
         # Find CC system update from start_cc
         cc_update_from_start = None
@@ -770,7 +570,7 @@ class TestCCExperimentContextPersistence:
                 break
 
         assert cc_update_from_start is not None, "start_cc should have published a CC system update"
-        assert cc_update_from_start.properties.state == "running"
+        assert cc_update_from_start.properties.state == "using"
         assert cc_update_from_start.properties.experiment_params is not None
         assert cc_update_from_start.properties.start_timestamp is not None
 
@@ -786,10 +586,16 @@ class TestCCExperimentContextPersistence:
 
         # 2. Execute terminate_cc - should retrieve context from world_state
         terminate_params = TerminateCCParams(
-            work_station_id="ws-1",
+            work_station="ws_bic_09_fh_001",
             device_id="cc-001",
-            device_type="column_chromatography_system",
-            end_state=RobotState.IDLE,
+            device_type="cc-isco-300p",
+            experiment_params=CCExperimentParams(
+                silicone_cartridge="silica_40g",
+                peak_gathering_mode="all",
+                air_purge_minutes=1.2,
+                run_minutes=30,
+                need_equilibration=True,
+            ),
         )
 
         # Reset producer call counts to isolate terminate_cc
@@ -804,7 +610,7 @@ class TestCCExperimentContextPersistence:
         assert producer.publish_result.call_count == 1
         result = producer.publish_result.call_args[0][0]
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.task_id == "task-terminate-cc"
 
         # Find CC system update from terminate_cc
@@ -815,7 +621,7 @@ class TestCCExperimentContextPersistence:
                 break
 
         assert cc_update_from_terminate is not None
-        assert cc_update_from_terminate.properties.state == "terminated"
+        assert cc_update_from_terminate.properties.state == "idle"
         # CRITICAL: Verify experiment context was persisted
         assert cc_update_from_terminate.properties.experiment_params == original_experiment_params
         assert cc_update_from_terminate.properties.start_timestamp == original_start_timestamp
@@ -830,7 +636,7 @@ class TestCCExperimentContextPersistence:
                 break
 
         assert ext_module_update is not None
-        assert ext_module_update.properties.state == "used"
+        assert ext_module_update.properties.state == "using"
 
     @pytest.mark.asyncio
     async def test_terminate_cc_without_experiment_context(self) -> None:
@@ -838,22 +644,21 @@ class TestCCExperimentContextPersistence:
         settings = _make_settings("talos_001")
         producer = AsyncMock()
         producer.publish_result = AsyncMock()
-        producer.publish_intermediate_update = AsyncMock()
         log_producer = AsyncMock()
         log_producer.publish_log = AsyncMock()
 
         world_state = WorldState()
         consumer = _build_consumer(settings, producer, log_producer, world_state=world_state)
 
-        from src.schemas.commands import RobotState, TerminateCCParams
+        from src.schemas.commands import CCExperimentParams, TerminateCCParams
 
         # Manually add CC system to world_state in "running" state WITHOUT experiment context
-        # This simulates the case where world_state was populated differently or context was lost
         world_state.apply_updates(
             [
                 CCSystemUpdate(
+                    type="column_chromatography_machine",
                     id="cc-001",
-                    properties=CCSystemProperties(
+                    properties=CCMachineProperties(
                         state="running",
                         experiment_params=None,
                         start_timestamp=None,
@@ -864,10 +669,16 @@ class TestCCExperimentContextPersistence:
 
         # Execute terminate_cc
         terminate_params = TerminateCCParams(
-            work_station_id="ws-1",
+            work_station="ws_bic_09_fh_001",
             device_id="cc-001",
-            device_type="column_chromatography_system",
-            end_state=RobotState.IDLE,
+            device_type="cc-isco-300p",
+            experiment_params=CCExperimentParams(
+                silicone_cartridge="silica_40g",
+                peak_gathering_mode="peak",
+                air_purge_minutes=1.2,
+                run_minutes=30,
+                need_equilibration=True,
+            ),
         )
 
         terminate_msg = make_mock_message(
@@ -879,7 +690,7 @@ class TestCCExperimentContextPersistence:
         assert producer.publish_result.call_count == 1
         result = producer.publish_result.call_args[0][0]
 
-        assert result.code == 0
+        assert result.code == 200
         assert result.task_id == "task-terminate-cc-no-context"
 
         # Find CC system update
@@ -890,7 +701,10 @@ class TestCCExperimentContextPersistence:
                 break
 
         assert cc_update is not None
-        assert cc_update.properties.state == "terminated"
-        # No experiment context since world_state had none
-        assert cc_update.properties.experiment_params is None
+        assert cc_update.properties.state == "idle"
+        # When world_state has no experiment context, the simulator falls back to
+        # the experiment_params from the command itself (terminate_cc always carries them).
+        assert cc_update.properties.experiment_params is not None
+        assert cc_update.properties.experiment_params.silicone_cartridge == "silica_40g"
+        # start_timestamp remains None since it was never set in world_state
         assert cc_update.properties.start_timestamp is None

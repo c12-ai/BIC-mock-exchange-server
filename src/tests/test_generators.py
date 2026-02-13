@@ -24,6 +24,7 @@ from src.generators.timing import (
     calculate_evaporation_duration,
     calculate_intermediate_interval,
 )
+from src.schemas.protocol import ContainerState
 from src.schemas.results import (
     CCSExtModuleUpdate,
     CCSystemUpdate,
@@ -37,7 +38,7 @@ from src.schemas.results import (
     TubeRackUpdate,
 )
 
-# ── Timestamp Generator Tests ────────────────────────────────────────────
+# -- Timestamp Generator Tests ------------------------------------------------
 
 
 class TestTimestampGenerator:
@@ -65,7 +66,7 @@ class TestTimestampGenerator:
         assert len(time_part) == 8, "Time part should be HH-MM-SS (8 chars)"
 
 
-# ── Entity Update Factory Tests ──────────────────────────────────────────
+# -- Entity Update Factory Tests ----------------------------------------------
 
 
 class TestEntityUpdateFactories:
@@ -83,33 +84,33 @@ class TestEntityUpdateFactories:
 
     def test_create_silica_cartridge_update(self) -> None:
         """Verify type='silica_cartridge' and correct id/properties."""
-        update = create_silica_cartridge_update("sc-001", "ws-1", "mounted")
+        update = create_silica_cartridge_update("sc-001", "ws-1", "inuse")
 
         assert isinstance(update, SilicaCartridgeUpdate)
         assert update.type == "silica_cartridge"
         assert update.id == "sc-001"
         assert update.properties.location == "ws-1"
-        assert update.properties.state == "mounted"
+        assert update.properties.state == "inuse"
 
     def test_create_sample_cartridge_update(self) -> None:
         """Verify type='sample_cartridge' and correct id/properties."""
-        update = create_sample_cartridge_update("samp-001", "ws-2", "using")
+        update = create_sample_cartridge_update("samp-001", "ws-2", "inuse")
 
         assert isinstance(update, SampleCartridgeUpdate)
         assert update.type == "sample_cartridge"
         assert update.id == "samp-001"
         assert update.properties.location == "ws-2"
-        assert update.properties.state == "using"
+        assert update.properties.state == "inuse"
 
     def test_create_tube_rack_update(self) -> None:
         """Verify type='tube_rack' and correct id/properties."""
-        update = create_tube_rack_update("rack-001", "ws-1", "mounted")
+        update = create_tube_rack_update("rack-001", "ws-1", "inuse")
 
         assert isinstance(update, TubeRackUpdate)
         assert update.type == "tube_rack"
         assert update.id == "rack-001"
         assert update.properties.location == "ws-1"
-        assert update.properties.state == "mounted"
+        assert update.properties.state == "inuse"
 
     def test_create_round_bottom_flask_update(self) -> None:
         """Verify type='round_bottom_flask' and correct id/properties."""
@@ -123,43 +124,51 @@ class TestEntityUpdateFactories:
 
     def test_create_ccs_ext_module_update(self) -> None:
         """Verify type='ccs_ext_module' and correct id/properties."""
-        update = create_ccs_ext_module_update("ext-001", "running")
+        update = create_ccs_ext_module_update("ext-001", "using")
 
         assert isinstance(update, CCSExtModuleUpdate)
         assert update.type == "ccs_ext_module"
         assert update.id == "ext-001"
-        assert update.properties.state == "running"
+        assert update.properties.state == "using"
 
     def test_create_cc_system_update_basic(self) -> None:
         """Verify CC system update without experiment_params."""
-        update = create_cc_system_update("cc-001", "running")
+        update = create_cc_system_update("cc-001", "using")
 
         assert isinstance(update, CCSystemUpdate)
-        assert update.type == "column_chromatography_system"
+        assert update.type == "column_chromatography_machine"
         assert update.id == "cc-001"
-        assert update.properties.state == "running"
+        assert update.properties.state == "using"
         assert update.properties.experiment_params is None
         assert update.properties.start_timestamp is None
 
     def test_create_cc_system_update_with_experiment_params(self) -> None:
         """Verify CC system update with experiment_params and start_timestamp."""
-        exp_params = {"silicone_column": "40g", "run_minutes": 30}
+        exp_params = {
+            "silicone_cartridge": "silica_40g",
+            "peak_gathering_mode": "all",
+            "air_purge_minutes": 5.0,
+            "run_minutes": 30,
+            "need_equilibration": True,
+        }
         update = create_cc_system_update(
             "cc-001",
-            "running",
+            "using",
             experiment_params=exp_params,
             start_timestamp="2025-01-15T10:00:00Z",
         )
 
         assert isinstance(update, CCSystemUpdate)
-        assert update.properties.experiment_params == exp_params
+        assert update.properties.experiment_params is not None
+        assert update.properties.experiment_params.silicone_cartridge == "silica_40g"
+        assert update.properties.experiment_params.run_minutes == 30
         assert update.properties.start_timestamp == "2025-01-15T10:00:00Z"
 
     def test_create_evaporator_update(self) -> None:
         """Verify all sensor fields present in evaporator update."""
         update = create_evaporator_update(
             "evap-001",
-            running=True,
+            state="using",
             lower_height=150.0,
             rpm=200,
             target_temperature=45.0,
@@ -172,7 +181,7 @@ class TestEntityUpdateFactories:
         assert update.type == "evaporator"
         assert update.id == "evap-001"
         props = update.properties
-        assert props.running is True
+        assert props.state == "using"
         assert props.lower_height == 150.0
         assert props.rpm == 200
         assert props.target_temperature == 45.0
@@ -190,7 +199,7 @@ class TestEntityUpdateFactories:
         assert update.properties.pulled_out_mm == 200.0
         assert update.properties.pulled_out_rate == 0.8
         assert update.properties.closed is False
-        assert update.properties.front_waste_bin == "open"
+        assert isinstance(update.properties.front_waste_bin, ContainerState)
         assert update.properties.back_waste_bin is None
 
     def test_create_pcc_right_chute_update(self) -> None:
@@ -204,10 +213,10 @@ class TestEntityUpdateFactories:
         assert update.properties.pulled_out_rate == 0.8
         assert update.properties.closed is False
         assert update.properties.front_waste_bin is None
-        assert update.properties.back_waste_bin == "open"
+        assert isinstance(update.properties.back_waste_bin, ContainerState)
 
 
-# ── Image Generator Tests ────────────────────────────────────────────────
+# -- Image Generator Tests ----------------------------------------------------
 
 
 class TestImageGenerators:
@@ -237,7 +246,7 @@ class TestImageGenerators:
 
         assert len(images) == 1
         img = images[0]
-        assert img.work_station_id == "ws-1"
+        assert img.work_station == "ws-1"
         assert img.device_id == "isco-001"
         assert img.device_type == "cc_system"
         assert img.component == "screen"
@@ -260,7 +269,7 @@ class TestImageGenerators:
             assert img.device_id == "evap-001"
 
 
-# ── Timing Calculation Tests ─────────────────────────────────────────────
+# -- Timing Calculation Tests -------------------------------------------------
 
 
 class TestTimingCalculations:

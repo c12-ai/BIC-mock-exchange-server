@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from src.config import MockSettings
     from src.mq.log_producer import LogProducer
     from src.mq.producer import ResultProducer
-    from src.schemas.commands import TaskName
+    from src.schemas.commands import TaskType
     from src.schemas.results import EntityUpdate, RobotResult
     from src.state.world_state import WorldState
 
@@ -59,7 +59,7 @@ class BaseSimulator(ABC):
         return self._settings.image_base_url
 
     @abstractmethod
-    async def simulate(self, task_id: str, task_name: TaskName, params: BaseModel) -> RobotResult:
+    async def simulate(self, task_id: str, task_type: TaskType, params: BaseModel) -> RobotResult:
         """Simulate a robot task and return the result."""
         ...
 

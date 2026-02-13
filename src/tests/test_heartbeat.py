@@ -31,9 +31,9 @@ class TestHeartbeatMessage:
         msg = HeartbeatMessage(
             robot_id="robot-002",
             timestamp="2025-01-15T10:30:00+00:00",
-            state="busy",
+            state="working",
         )
-        assert msg.state == "busy"
+        assert msg.state == "working"
 
     def test_serialization(self) -> None:
         """Test JSON serialization."""
